@@ -15,7 +15,7 @@ YDLidar SDK requires [CMake 2.8.2+](https://cmake.org/). You can install it usin
 sudo apt install cmake pkg-config
 ```
 ### Compile YDLidar SDK Example Project
-In the YDLidar directory, run the following commands to compile the project:
+In the directory where you want the project to be located, run the following commands to compile the project:
 ```
 git clone https://github.com/MoritzTockner/PiDLidar
 cd YDLidar
@@ -59,23 +59,23 @@ The most important API classes and structures for controlling the sensor are:
 `LaserScan`: Contains a `LaserConfig`, multiple scanned `LaserPoints` and a corresponding timestamp `stamp`
 
 `CYdLidar`: the main Sensor class with following member variables 
-* `MaxRange`
-* `MinRange`
-* `MaxAngle`
-* `MinAngle`
-* `SampleRate`
-* `ScanFrequency`
-* `FixedResolution`
-* `Reversion`
-* `Inverted`
-* `AutoReconnect`
-* `SerialBaudrate`
-* `AbnormalCheckCount`
-* `SerialPort`
-* `IgnoreArray`
-* `OffsetTime`
-* `SingleChannel`
-* `LidarType`
+* `MaxRange`: maximum sample range. Everything that exceeds this range is set to 0
+* `MinRange`: minimum sample range. Everything that is below this range is set to 0
+* `MaxAngle`: maximum scan angle in degree (max 180)
+* `MinAngle`: minimum scan angle in degree (min -180)
+* `SampleRate`: sample rate in kHz
+* `ScanFrequency`: rotations of the sensor per second. Default is 10 but without external PWM its around 7-8 Hz for the X4 Model. This is set to 8 in the example project because it's used for calculating the sleep time of the worker thread
+* `FixedResolution`: ???
+* `Reversion`: determines where 0° e.g. the front of the sensor is. False --> the side where the motor is located on the sensor, True --> the opposite side.
+* `Inverted`: determines the direction of positive angle. True --> counter clockwise, False --> clockwise.
+* `AutoReconnect`: ???
+* `SerialBaudrate`: baudrate of the serial communication to the sensor
+* `AbnormalCheckCount`: ???
+* `SerialPort`: string with the serial port where the sensor is connected
+* `IgnoreArray`: ???
+* `OffsetTime`: ???
+* `SingleChannel`: ???
+* `LidarType`: 1 --> Triangulation, 0 --> Time of Flight
 
 which can be accessed via setters and getters. The member variables 
 * `SoftVersion`
@@ -92,7 +92,7 @@ The sensor can be controlled with the following methods:
 * `turnOff`
 * `disconnecting`
 
-The corresponding sourcecode can be found in [include/ydlidar_protocol.h](include/ydlidar_protocol.h) and [include/CYdLidar.h](include/CYdLidar.h). A python wrapper exists for all these classes and their methods (see [])
+The corresponding sourcecode can be found in [include/ydlidar_protocol.h](include/ydlidar_protocol.h) and [include/CYdLidar.h](include/CYdLidar.h). A python wrapper exists for all these classes and their methods (see the following section).
 
 # YDLidar Python SDK
 ## Installation
@@ -101,27 +101,35 @@ YDLidar SDK requires [CMake 2.8.2+](https://cmake.org/). You can install it usin
 ```
 sudo apt install cmake pkg-config
 ```
-For the GUI example project the following packages are used:
-* numpy (1.12.1)
-* pyqtgraph (0.10.0)
+For the GUI example project depends on:
+* Python 3.x
+* numpy
+* pyqtgraph
 * PyQt5
 
-When installing pyqtgraph with pip3, a newer numpy version (1.18.0) is also installed but an error occured when i tried to use pyqtgraph with the new numpy version (or just numpy alone). Solution:
+When installing pyqtgraph with pip3, a newer numpy version (1.18.0) is also installed but an error occured when i tried to use pyqtgraph with the new numpy version (or just numpy alone). I already had numpy 1.12.1 installed, so my solution to the problem was to install pyqtgraph with its depencies (numpy 1.18.0) and then uninstall the new numpy version, so that the 1.12.1 is used.
 ```
+pip3 install numpy==1.12.1
 pip3 install pyqtgraph
 pip3 uninstall numpy
 ```
-Now the new numpy version is removed and the old one is used (has to be installed beforehand).
 
+### Create the PiDLidar Python Package
+In the PiDLidar directory, run the following commands to install the python package:
+```
+pip3 install .
+```
 
-### Install the 
-In the YDLidar directory, run the following commands to compile the project:
+### Run the PiDLidar Example 
+Navigate to the python folder and execute the gui.py script.
 ```
-git clone https://github.com/MoritzTockner/PiDLidar
-cd YDLidar
-cmake -D BUILD_CPP_EXAMPLE=ON .
-make
+cd PiDLidar/python
+python gui.py
 ```
+
+## The API
+See the C++ SDK API.
+
 
 # Sensor Specifications 
 The following specifications are gathered from the [Datasheet](1).
