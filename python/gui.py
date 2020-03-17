@@ -35,7 +35,6 @@ class Worker(QObject):
         hardError = False
         fetchAndSignalTime = 0
         maxRange = None
-        scanTime = 1/self.laser.getScanFrequency()
 
         # Fetch data until finish is set to False by StopButton
         while not self.finish:
@@ -71,8 +70,8 @@ class Worker(QObject):
                 print('Hard error in CYdLidar.doProcessSimple().')
 
             # Thread sleeps for approximately one rotation of the sensor until it tries to fetch new data.
-            if scanTime > fetchAndSignalTime:
-                time.sleep(scanTime - fetchAndSignalTime)
+            if scan.config.scan_time > fetchAndSignalTime:
+                time.sleep(scan.config.scan_time - fetchAndSignalTime)
 
 
 
