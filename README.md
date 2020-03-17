@@ -92,7 +92,7 @@ The most important API classes and structures for controlling the sensor are:
 * `MaxAngle`: maximum scan angle in degree (max 180)
 * `MinAngle`: minimum scan angle in degree (min -180)
 * `SampleRate`: sample rate in kHz
-* `ScanFrequency`: rotations of the sensor per second. Default is 10 but without external PWM its around 7-8 Hz for the X4 Model. This is set to 8 in the example project because it's used for calculating the sleep time of the worker thread
+* `ScanFrequency`: rotations of the sensor per second. Default is 10 but without external PWM its around 7-8 Hz for the X4 Model.
 * `FixedResolution`: ???
 * `Reversion`: determines where 0° e.g. the front of the sensor is. False --> the side where the motor is located on the sensor, True --> the opposite side.
 * `Inverted`: determines the direction of positive angle. True --> counter clockwise, False --> clockwise.
