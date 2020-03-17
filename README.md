@@ -18,13 +18,13 @@ sudo apt install cmake pkg-config
 In the directory where you want the project to be located, run the following commands to compile the project:
 ```
 git clone https://github.com/MoritzTockner/PiDLidar
-cd YDLidar
+cd PiDLidar
 cmake -D BUILD_CPP_EXAMPLE=ON .
 make
 ```
 
 ## Run YDLidar SDK Example
-The following configuation is used for the X4 Lidar Sensor and can be found in the [Specifications](#Specifications) Section. The lidar scan frequency (the frequency with which the sensor should rotate) that can be entered here has no effect. At least for the X4 Model. The real scan frequency is per default a little bit below 8 Hz and can only be modified with an external PWM signal (see [Datasheet](1) - page 5, 6). 
+The following configuation is used for the X4 Lidar Sensor and can be found in the [Specifications](#Specifications) Section. The lidar scan frequency (the frequency with which the sensor should rotate) that can be entered here has no effect. At least for the X4 Model. The real scan frequency is per default a little bit below 8 Hz and can only be modified with an external PWM signal (see [Datasheet](1) - page 5 & 6). 
 
 ```
 ./ydlidar_test
@@ -54,7 +54,7 @@ The most important API classes and structures for controlling the sensor are:
 
 `LaserPoint`: Data structure that stores the range, distance and intensity (not used for the X4 Model) of a measured point.
 
-`LaserConfig`: Internally used by the _LaserScan_ class.
+`LaserConfig`: Internally used by the `LaserScan` class.
 
 `LaserScan`: Contains a `LaserConfig`, multiple scanned `LaserPoints` and a corresponding timestamp `stamp`
 
@@ -77,22 +77,22 @@ The most important API classes and structures for controlling the sensor are:
 * `SingleChannel`: ???
 * `LidarType`: 1 --> Triangulation, 0 --> Time of Flight
 
-which can be accessed via setters and getters. The member variables 
+which can be accessed via setters and getters. The member variables:
 * `SoftVersion`
 * `HardwareVersion`
 * `SerialNumber`
 * `isAngleOffsetCorrected`
 * `AngleOffset`
 
-are read-only and only be accessed with their corresponding getters.
+are read-only and can only be accessed with their corresponding getters.
 The sensor can be controlled with the following methods:
-* `initialize`
-* `doProcessSimple`
-* `turnOn`
-* `turnOff`
-* `disconnecting`
+* `initialize`: Initializes the LIDAR with the configured parameters. A few lines of device information are printed and the sensor starts spinning and stops again after a very short time
+* `doProcessSimple`: returns true when the samples of a full rotation are ready and stores their information in a `LaserScan` (around 600 `LaserPoints`)
+* `turnOn`: starts the sensor rotation and sampling. It has to be initialized first
+* `turnOff`: stops the sensor rotation and sampling
+* `disconnecting`: the sensor can't be started anymore after disconnecting. First it has to be initialized again
 
-The corresponding sourcecode can be found in [include/ydlidar_protocol.h](include/ydlidar_protocol.h) and [include/CYdLidar.h](include/CYdLidar.h). A python wrapper exists for all these classes and their methods (see the following section).
+The corresponding sourcecode can be found in [include/ydlidar_protocol.h](include/ydlidar_protocol.h) (`LaserPoint`, `LaserConfig` and `LaserScan`) and [include/CYdLidar.h](include/CYdLidar.h) (`CYdLidar`). A python wrapper exists for all these classes and their methods (see the following section).
 
 # YDLidar Python SDK
 ## Installation
@@ -101,13 +101,13 @@ YDLidar SDK requires [CMake 2.8.2+](https://cmake.org/). You can install it usin
 ```
 sudo apt install cmake pkg-config
 ```
-For the GUI example project depends on:
+The GUI example project depends on:
 * Python 3.x
-* numpy
-* pyqtgraph
 * PyQt5
+* numpy (used version 1.12.1)
+* pyqtgraph (used version 0.10.0)
 
-When installing pyqtgraph with pip3, a newer numpy version (1.18.0) is also installed but an error occured when i tried to use pyqtgraph with the new numpy version (or just numpy alone). I already had numpy 1.12.1 installed, so my solution to the problem was to install pyqtgraph with its depencies (numpy 1.18.0) and then uninstall the new numpy version, so that the 1.12.1 is used.
+At the time of writing this, when installing pyqtgraph with pip3, a newer numpy version (1.18.0) is also installed but an error occured when i tried to use pyqtgraph with the new numpy version (or just numpy alone). I already had numpy 1.12.1 installed, so my solution to the problem was to install pyqtgraph with its depencies (numpy 1.18.0) and then uninstall the new numpy version, so that the 1.12.1 is used.
 ```
 pip3 install numpy==1.12.1
 pip3 install pyqtgraph
@@ -117,11 +117,12 @@ pip3 uninstall numpy
 ### Create the PiDLidar Python Package
 In the PiDLidar directory, run the following commands to install the python package:
 ```
+cd PiDLidar
 pip3 install .
 ```
 
 ### Run the PiDLidar Example 
-Navigate to the python folder and execute the gui.py script.
+Navigate to the python folder and execute the [gui.py](python/gui.py) script.
 ```
 cd PiDLidar/python
 python gui.py
@@ -149,6 +150,10 @@ The following specifications are gathered from the [Datasheet](1).
    * [Development Manual](http://www.ydlidar.com/Public/upload/files/2019-12-18/YDLIDAR%20X4%20Development%20Manual.pdf)
    * [Windows Tool](http://www.ydlidar.com/dowfile.html?cid=2&type=5)
    * [SDK Github](https://github.com/YDLIDAR/sdk)
+* [PyQtGraph Documentation](http://pyqtgraph.org/documentation/)
+* [PyQt5 API Documentation](https://doc.qt.io/qtforpython/index.html#)
+
+Datasheet, User Manual and Development Manual can also be found in the [doc](doc) folder.
 
 # Licence
 
