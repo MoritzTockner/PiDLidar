@@ -163,7 +163,7 @@ After some status messages, the GUI will appear with the following control eleme
 * **Slider**: enables manually adjustment of the graph scaling. Ranges from 1 (most left) to 10 metres (most right)
 * **Enable auto-scaling Ticker**: scaling is automatically adjusted to the most distant sample currently available when enabled. The slider can't be changed manually when auto-scaling is activated
 
-![GUI](image/GUI.png  "GUI")
+![GUI](image/gui.png  "GUI")
 
 ## The API
 See the C++ SDK API.
