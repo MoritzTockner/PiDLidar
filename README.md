@@ -47,6 +47,34 @@ Please select the lidar baudrate:1
 Whether the Lidar is one-way communication[yes/no]:no
 Whether the Lidar is a TOF Lidar [yes/no]:no
 Please enter the lidar scan frequency[5-12]:8
+YDLidar SDK initializing
+YDLidar SDK has been initialized
+[YDLIDAR]:SDK Version: 1.4.6
+LiDAR successfully connected
+[YDLIDAR]:Lidar running correctly ! The health status: good
+[YDLIDAR] Connection established in [/dev/ttyUSB0][128000]:
+Firmware version: 1.5
+Hardware version: 1
+Model: X4
+Serial: 2019050500001341
+LiDAR init success!
+[YDLIDAR INFO] Current Sampling Rate : 5K
+[YDLIDAR INFO] Now YDLIDAR is scanning ......
+Scan received[1584432655212153000]: 605 ranges is [8.278145]Hz
+Scan received[1584432655333865000]: 602 ranges is [8.319468]Hz
+Scan received[1584432655454265000]: 600 ranges is [8.347245]Hz
+Scan received[1584432655574265000]: 599 ranges is [8.361204]Hz
+Scan received[1584432655694065000]: 600 ranges is [8.347245]Hz
+Scan received[1584432655814065000]: 599 ranges is [8.361204]Hz
+Scan received[1584432655933865000]: 600 ranges is [8.347245]Hz
+Scan received[1584432656053865000]: 600 ranges is [8.347245]Hz
+Scan received[1584432656173865000]: 599 ranges is [8.361204]Hz
+Scan received[1584432656293665000]: 600 ranges is [8.347245]Hz
+Scan received[1584432656413665000]: 598 ranges is [8.375209]Hz
+Scan received[1584432656533265000]: 600 ranges is [8.347245]Hz
+Scan received[1584432656653265000]: 599 ranges is [8.361204]Hz
+Scan received[1584432656773065000]: 599 ranges is [8.361204]Hz
+...
 ```
 
 ## The API
@@ -127,6 +155,15 @@ Navigate to the python folder and execute the [gui.py](python/gui.py) script.
 cd PiDLidar/python
 python gui.py
 ```
+
+After some status messages, the GUI will appear with the following control elements:
+* **Start Sensor Button**: calls `CYdLidar.turnOn()` to start sampling and displaying the samples in the graph
+* **Stop Sensor Button**: calls `CYdLidar.turnOff()` to stop the sensor
+* **Exit Application Button**: calls `CYdLidar.turnOff()` followed by `CYdLidar.disconnecting()` to safely close the connection and exits the application
+* **Slider**: enables manually adjustment of the graph scaling. Ranges from 1 (most left) to 10 metres (most right)
+* **Enable auto-scaling Ticker**: scaling is automatically adjusted to the most distant sample currently available when enabled. The slider can't be changed manually when auto-scaling is activated
+
+![GUI](image/GUI.png  "GUI")
 
 ## The API
 See the C++ SDK API.
