@@ -1,78 +1,11 @@
 import sys
-from PyQt5.QtWidgets import (QSizePolicy, QSlider, QCheckBox, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QApplication)
+from PyQt5.QtWidgets import (QTextEdit, QSizePolicy, QSlider, QCheckBox, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QApplication)
 from PyQt5.QtCore import (Qt, QThread, QObject, pyqtSlot, pyqtSignal)
 import pyqtgraph as pg
 import numpy as np
 import PiDLidar
+import worker
 import time
-
-
-class Worker(QObject):
-
-    start = pyqtSignal()        # Starts the run method
-    dataSignal = pyqtSignal(object)     # Notifies GUI thread to update plot with object as data
-
-    def __init__(self, laser, minRange, maxRange, autoScale):
-        QThread.__init__(self)
-        self.laser = laser      # CYdLidar class object
-        self.finish = False     # Is set to true when stop button is pressed to close worker thread
-        self.maxRange = maxRange
-        self.minRange = minRange
-        self.autoScale = autoScale
-        self.start.connect(self.run)    # Run method is executed if start signal is emitted
-
-    #@pyqtSlot()
-    #def run(self):
-    #    import cProfile
-    #    cProfile.runctx('self.run_()', globals(), locals(), 'profileWorkerThread')
-
-
-    @pyqtSlot()
-    def run(self):
-        """ Gets lidar data from sensor in a loop and emits a signal when new data arrived.
-            Sleeps for a constant time before fetching new data from the sensor. """
-        scan = PiDLidar.LaserScan()
-        hardError = False
-        fetchAndSignalTime = 0
-        maxRange = None
-
-        # Fetch data until finish is set to False by StopButton
-        while not self.finish:
-            # If new data arrived, store it in scan
-            if self.laser.doProcessSimple(scan, hardError):
-                # Measure time of data processing for calculation of the thread timeout afterwards
-                fetchAndSignalTime = time.time()
-                # When autoscale is enabled
-                if self.autoScale:
-                    # Take all samples, except the ones under 0.1 meters. They are mapped to 0 by the sensor
-                    # because that is below the minimal range.
-                    data = np.array([(point.range * np.cos(point.angle + np.pi/2), point.range * np.sin(point.angle + np.pi/2)) \
-                        for point in scan.points \
-                        if point.range >= self.minRange], \
-                        dtype=[('x', float), ('y', float)])
-                    # Find sample with the highest range, to adjust autoscaling accordingly
-                    maxRange = max([point.range for point in scan.points])
-                else:
-                    # Take all samples that are under the configured maximum range and above 0.1 meters.
-                    data = np.array([(point.range * np.cos(point.angle + np.pi/2), point.range * np.sin(point.angle + np.pi/2)) \
-                        for point in scan.points \
-                        if point.range <= self.maxRange and point.range >= self.minRange], \
-                        dtype=[('x', float), ('y', float)])
-                    # The configured max range
-                    maxRange = self.maxRange
-
-                # Notify GUI process to plot the sampled data
-                # and update the scaling of the plot if necessary
-                self.dataSignal.emit({'points' : data, 'maxRange' : maxRange})
-                fetchAndSignalTime = time.time() - fetchAndSignalTime
-            if hardError:
-                self.finish = True
-                print('Hard error in CYdLidar.doProcessSimple().')
-
-            # Thread sleeps for approximately one rotation of the sensor until it tries to fetch new data.
-            if scan.config.scan_time > fetchAndSignalTime:
-                time.sleep(scan.config.scan_time - fetchAndSignalTime)
-
 
 
 class LidarGUI(QWidget):
@@ -89,6 +22,8 @@ class LidarGUI(QWidget):
         self.scalingSliderMin = 0
         self.initialMinRange = 0.1
         self.initialMaxRange = self.scalings[0]
+        self.halfCarWidth = 0.1         # Car width in meters
+        self.initialDriveAngle = 0      # Angle in radiant for which collision range will be calculated
         self.initLidar()
         self.initUI()
 
@@ -106,9 +41,11 @@ class LidarGUI(QWidget):
         # Start thread
         self.thread.start()
         # Create worker object that updates lidar data plot
-        self.worker = Worker(self.laser, \
+        self.worker = worker.Worker(self.laser, \
                              self.initialMinRange, \
                              self.initialMaxRange, \
+                             self.halfCarWidth, \
+                             self.initialDriveAngle, \
                              self.autoScalingCheck.isChecked())
         # Connect dataSignal of Worker to plotData method
         self.worker.dataSignal.connect(self.plotData)
@@ -150,15 +87,20 @@ class LidarGUI(QWidget):
         self.scalingSlider.setValue(self.scalings.index(self.initialMaxRange))
         self.scalingSlider.valueChanged.connect(self.scalingSliderChanged)
 
+        # Create a text field for the collision range
+        self.collisionRangeText = QTextEdit()
+        self.collisionRangeText.setReadOnly(True)
+
         # Arrange buttons in a row
         vbox = QVBoxLayout()
         vbox.addWidget(self.autoScalingCheck, 1)
         vbox.addWidget(self.scalingSlider, 1)
+        vbox.addWidget(self.collisionRangeText, 1)
         vbox.addWidget(startBtn, 1)
         vbox.addWidget(stopBtn, 1)
         vbox.addWidget(exitBtn, 1)
 
-        # Create an empty box above the button row
+        # Create an hbox for the input elements and the graph
         hbox = QHBoxLayout()
 
         # Create a pyqtgraph plot widget instance
@@ -189,12 +131,16 @@ class LidarGUI(QWidget):
         # Add polar grid lines
         self.plotWidget.addLine(x=0, pen=0.2)
         self.plotWidget.addLine(y=0, pen=0.2)
+        # Draw car path lines
+        pen = pg.mkPen('r', width=0.5, style=Qt.DashLine)
+        self.plotWidget.addLine(x=self.halfCarWidth, pen=pen)
+        self.plotWidget.addLine(x=-self.halfCarWidth, pen=pen)
         for r in np.linspace(self.initialMinRange, self.scalings[self.scalingSlider.value()], 10):
             circle = pg.QtGui.QGraphicsEllipseItem(-r, -r, r*2, r*2)
             circle.setPen(pg.mkPen(0.2))
             self.plotWidget.addItem(circle)
         # Add plotDataItem so that plt.setData can be used
-        self.plt = self.plotWidget.plot(pen=None, symbol='x')
+        self.plt = self.plotWidget.plot(pen=None, symbol='o', symbolSize=2, symbolPen='w', symbolBrush='w')
 
     @pyqtSlot(object)
     def plotData(self, data):
@@ -205,6 +151,7 @@ class LidarGUI(QWidget):
             self.scalingSliderChanged()
 
         self.plt.setData(data['points']['x'], data['points']['y'])
+        self.collisionRangeText.setPlainText(str(data['collisionPoint']['y']))
 
 
     def autoScalingToggled(self):
