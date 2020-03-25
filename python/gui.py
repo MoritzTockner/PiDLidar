@@ -17,16 +17,17 @@ class LidarGUI(QWidget):
         self.scalingCheck = None
         self.runtime = None
         self.scalings = range(1, 11)
-        #self.scalings = [1, 5, 10, 20, 30, 40, 50, 60] # Lookup table for the scaling slider
         self.scalingSliderMax = len(self.scalings) - 1
         self.scalingSliderMin = 0
+        self.gridCircles = []
+        self.nrOfGridCircles = 10
         self.initialMinRange = 0.1
-        self.initialMaxRange = self.scalings[4]
+        self.initialMaxRange = self.scalings[0]
         self.halfCarWidth = 0.1         # Car width in meters
         self.initialDriveAngle = 0      # Angle in degree for which collision range will be calculated
         self.driveAngle = self.initialDriveAngle
-        self.driveAngleMin = -45
-        self.driveAngleMax = 45
+        self.driveAngleMin = -90
+        self.driveAngleMax = 90
         self.initLidar()
         self.initUI()
 
@@ -100,7 +101,7 @@ class LidarGUI(QWidget):
         self.driveAngleSlider.setMinimum(self.driveAngleMin)
         self.driveAngleSlider.setMaximum(self.driveAngleMax)
         self.driveAngleSlider.setTickPosition(QSlider.TicksAbove)
-        self.driveAngleSlider.setTickInterval(1)
+        self.driveAngleSlider.setTickInterval(10)
         self.driveAngleSlider.setValue(self.initialDriveAngle)
         self.driveAngleSlider.valueChanged.connect(self.driveAngleSliderChanged)
 
@@ -124,8 +125,15 @@ class LidarGUI(QWidget):
         self.plotWidget.setYRange(-self.initialMaxRange, self.initialMaxRange)
         self.plotWidget.setXRange(-self.initialMaxRange, self.initialMaxRange)
 
-        # Draw grid
-        self.redrawGraph()
+        # Draw the graph and add a plot item for displaying future data points.
+        self.drawGraph()
+        # Add plotDataItem so that plt.setData can be used
+        self.plt = self.plotWidget.plot(
+            pen=None, \
+            symbol='o', \
+            symbolSize=2, \
+            symbolPen='w', \
+            symbolBrush='w')
 
         hbox.addWidget(self.plotWidget, 3)
         hbox.addLayout(vbox, 1)
@@ -137,40 +145,49 @@ class LidarGUI(QWidget):
         self.showFullScreen()
         print('GUI Initialized')
 
-    def redrawGraph(self):
-        """ Clears the plot widget, redraws the grid lines for current scaling
-            and adds a plotDataItem to the plot widget. """
+    def drawGraph(self):
+        """ Draws the grid lines for current scaling and the current car path. """
         # Clear all items from plot widget
-        self.plotWidget.clear()
-        self.drawGridLines()
+        self.drawGrid()
         # Draw car path lines
         self.drawCarPath()
 
 
-    def drawGridLines(self):
-        # Add polar grid lines
+    def redrawGrid(self):
+        """ Changes the polar grid lines according to the caling value. """
+        for i in np.arange(1, self.nrOfGridCircles + 1, 1):
+            r = i/10*self.scalings[self.scalingSlider.value()]
+            self.gridCircles[i-1].setRect(-r, -r, r*2, r*2)
+
+
+    def drawGrid(self):
+        """ Draws the horizontal and vertical axis and polar grid circles. """
+        # Add horizontal and vertical axis
         self.plotWidget.addLine(x=0, pen=0.2)
         self.plotWidget.addLine(y=0, pen=0.2)
-        for r in np.linspace(self.initialMinRange, self.scalings[self.scalingSlider.value()], 10):
-            circle = pg.QtGui.QGraphicsEllipseItem(-r, -r, r*2, r*2)
-            circle.setPen(pg.mkPen(0.2))
-            self.plotWidget.addItem(circle)
-        # Add plotDataItem so that plt.setData can be used
-        self.plt = self.plotWidget.plot(
-            pen=None, \
-            symbol='o', \
-            symbolSize=2, \
-            symbolPen='w', \
-            symbolBrush='w')
+        # Add polar grid circles
+        for i in np.arange(1, self.nrOfGridCircles + 1, 1):
+            r = i/10*self.scalings[self.scalingSlider.value()]
+            self.gridCircles.append(pg.QtGui.QGraphicsEllipseItem(-r, -r, r*2, r*2))
+            self.gridCircles[i-1].setPen(pg.mkPen(0.2))
+            self.plotWidget.addItem(self.gridCircles[i-1])
+
+
+    def redrawCarPath(self):
+        """ Updates the angle and position of the car path lines
+            corresponding to the current drive angle. """
+        self.rightPathLine.setValue(
+            QPointF(self.halfCarWidth * np.cos(np.deg2rad(self.driveAngle)), \
+                    self.halfCarWidth * np.sin(np.deg2rad(self.driveAngle))))
+        self.rightPathLine.setAngle(self.driveAngle + 90)
+        self.leftPathLine.setValue(
+            QPointF(-self.halfCarWidth * np.cos(np.deg2rad(self.driveAngle)), \
+                    -self.halfCarWidth * np.sin(np.deg2rad(self.driveAngle))))
+        self.leftPathLine.setAngle(self.driveAngle + 90)
+
 
     def drawCarPath(self):
-        """ Draws the current path of the car in red dashed lines
-            and removes the old ones if they exist. """
-        if hasattr(self, 'rightPathLine'):
-            self.plotWidget.removeItem(self.rightPathLine)
-        if hasattr(self, 'leftPathLine'):
-            self.plotWidget.removeItem(self.leftPathLine)
-
+        """ Draws the current path of the car in red dashed lines. """
         pen = pg.mkPen('r', width=0.5, style=Qt.DashLine)
 
         # Right line
@@ -230,6 +247,7 @@ class LidarGUI(QWidget):
             print('Laser scanned for {} seconds'.format(self.runtime))
             return self.laser.turnOff() # Stop Lidar
 
+
     def exitBtnClicked(self):
         """ Stop the laser and exit the application. """
         if self.started:
@@ -244,15 +262,16 @@ class LidarGUI(QWidget):
         val = self.scalings[self.scalingSlider.value()]
         self.plotWidget.setYRange(-val, val)
         self.plotWidget.setXRange(-val, val)
-        self.redrawGraph()
+        self.redrawGrid()
         if hasattr(self, 'worker'):
             self.worker.maxRange = val
+
 
     def driveAngleSliderChanged(self):
         """ Changes the drive angle of the car and therefore
             also the path that has to be checked for collisions. """
         self.driveAngle = self.driveAngleSlider.value()
-        self.drawCarPath()
+        self.redrawCarPath()
         if hasattr(self, 'worker'):
             self.worker.driveAngle = self.driveAngle
 

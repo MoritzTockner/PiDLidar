@@ -21,14 +21,14 @@ class Worker(QObject):
         self.halfCarWidth = halfCarWidth       # Car width in metres
         self.start.connect(self.run)    # Run method is executed if start signal is emitted
 
-    #@pyqtSlot()
-    #def run(self):
-    #    import cProfile
-    #    cProfile.runctx('self.run_()', globals(), locals(), 'profileWorkerThread')
-
-
     @pyqtSlot()
     def run(self):
+        import cProfile
+        cProfile.runctx('self.run_()', globals(), locals(), 'profileWorkerThread')
+
+
+    #@pyqtSlot()
+    def run_(self):
         """ Gets lidar data from sensor in a loop and emits a signal when new data arrived.
             Sleeps for a constant time before fetching new data from the sensor. """
         scan = PiDLidar.LaserScan()
@@ -86,6 +86,8 @@ class Worker(QObject):
             # Thread sleeps for approximately one rotation of the sensor until it tries to fetch new data.
             if scan.config.scan_time > fetchAndSignalTime:
                 time.sleep(scan.config.scan_time - fetchAndSignalTime)
+            else:
+                print('Skipped a rotation')
 
 
     def findCollisionPoint(self, points):
