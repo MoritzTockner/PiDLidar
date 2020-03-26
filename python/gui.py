@@ -24,10 +24,12 @@ class LidarGUI(QWidget):
         self.initialMinRange = 0.1
         self.initialMaxRange = self.scalings[0]
         self.halfCarWidth = 0.1         # Car width in meters
-        self.initialDriveAngle = 0      # Angle in degree for which collision range will be calculated
-        self.driveAngle = self.initialDriveAngle
-        self.driveAngleMin = -90
-        self.driveAngleMax = 90
+        self.turnRadiusMin = 0.5
+        self.turnRadiusMax = 100
+        self.nrOfTurnRadii = 25
+        self.createTurnRadiiLookupTable()
+        self.initialTurnRadius = 0      # Angle in degree for which collision range will be calculated
+        self.turnRadius = self.initialTurnRadius
         self.initLidar()
         self.initUI()
 
@@ -36,6 +38,20 @@ class LidarGUI(QWidget):
         """ Stop Lidar and disconnect serial connection. """
         self.laser.turnOff()
         self.laser.disconnecting()
+
+    def createTurnRadiiLookupTable(self):
+        # nrOfTurnRadii different radii for every direction,
+        # +1 for the case turnRadius = Inf --> straight line
+        self.turnRadii = np.zeros(self.nrOfTurnRadii*2 + 1)
+        self.turnRadii[:self.nrOfTurnRadii] = -1*np.logspace(
+            np.log10(self.turnRadiusMin),
+            np.log10(self.turnRadiusMax),
+            self.nrOfTurnRadii)
+        self.turnRadii[self.nrOfTurnRadii] = 0
+        self.turnRadii[self.nrOfTurnRadii+1:] = np.logspace(
+            np.log10(self.turnRadiusMax),
+            np.log10(self.turnRadiusMin),
+            self.nrOfTurnRadii)
 
     def initWorkerThread(self):
         """ Creates a new thread and assigns an instance of the Worker class to it. """
@@ -50,7 +66,7 @@ class LidarGUI(QWidget):
             self.initialMinRange, \
             self.initialMaxRange, \
             self.halfCarWidth, \
-            self.initialDriveAngle, \
+            self.initialTurnRadius, \
             self.autoScalingCheck.isChecked())
         # Connect dataSignal of Worker to plotData method
         self.worker.dataSignal.connect(self.plotData)
@@ -96,21 +112,21 @@ class LidarGUI(QWidget):
         self.collisionRangeText = QTextEdit()
         self.collisionRangeText.setReadOnly(True)
 
-        # Create slider for adjusting the car drive angle
-        self.driveAngleSlider = QSlider(orientation=Qt.Horizontal)
-        self.driveAngleSlider.setMinimum(self.driveAngleMin)
-        self.driveAngleSlider.setMaximum(self.driveAngleMax)
-        self.driveAngleSlider.setTickPosition(QSlider.TicksAbove)
-        self.driveAngleSlider.setTickInterval(10)
-        self.driveAngleSlider.setValue(self.initialDriveAngle)
-        self.driveAngleSlider.valueChanged.connect(self.driveAngleSliderChanged)
+        # Create slider for adjusting the car turn radius
+        self.turnRadiusSlider = QSlider(orientation=Qt.Horizontal)
+        self.turnRadiusSlider.setMinimum(0)
+        self.turnRadiusSlider.setMaximum(self.nrOfTurnRadii*2)
+        self.turnRadiusSlider.setTickPosition(QSlider.TicksAbove)
+        self.turnRadiusSlider.setTickInterval(1)
+        self.turnRadiusSlider.setValue(self.nrOfTurnRadii)
+        self.turnRadiusSlider.valueChanged.connect(self.turnRadiusSliderChanged)
 
         # Arrange buttons in a row
         vbox = QVBoxLayout()
         vbox.addWidget(self.autoScalingCheck, 1)
         vbox.addWidget(self.scalingSlider, 1)
         vbox.addWidget(self.collisionRangeText, 1)
-        vbox.addWidget(self.driveAngleSlider, 1)
+        vbox.addWidget(self.turnRadiusSlider, 1)
         vbox.addWidget(startBtn, 1)
         vbox.addWidget(stopBtn, 1)
         vbox.addWidget(exitBtn, 1)
@@ -176,14 +192,27 @@ class LidarGUI(QWidget):
     def redrawCarPath(self):
         """ Updates the angle and position of the car path lines
             corresponding to the current drive angle. """
-        self.rightPathLine.setValue(
-            QPointF(self.halfCarWidth * np.cos(np.deg2rad(self.driveAngle)), \
-                    self.halfCarWidth * np.sin(np.deg2rad(self.driveAngle))))
-        self.rightPathLine.setAngle(self.driveAngle + 90)
-        self.leftPathLine.setValue(
-            QPointF(-self.halfCarWidth * np.cos(np.deg2rad(self.driveAngle)), \
-                    -self.halfCarWidth * np.sin(np.deg2rad(self.driveAngle))))
-        self.leftPathLine.setAngle(self.driveAngle + 90)
+        if self.turnRadius == 0:
+            self.plotWidget.removeItem(self.rightPathCurve)
+            self.plotWidget.removeItem(self.leftPathCurve)
+            self.plotWidget.addItem(self.rightPathLine)
+            self.plotWidget.addItem(self.leftPathLine)
+        else:
+            self.plotWidget.removeItem(self.rightPathLine)
+            self.plotWidget.removeItem(self.leftPathLine)
+            #if self.turnRadius > :
+            self.rightPathCurve.setRect(
+                    self.halfCarWidth,
+                    -self.turnRadius + self.halfCarWidth,
+                    2*self.turnRadius - self.halfCarWidth*2,
+                    2*self.turnRadius - self.halfCarWidth*2)
+            self.leftPathCurve.setRect(
+                    -self.halfCarWidth,
+                    -self.turnRadius - self.halfCarWidth,
+                    2*self.turnRadius + self.halfCarWidth*2,
+                    2*self.turnRadius + self.halfCarWidth*2)
+            self.plotWidget.addItem(self.rightPathCurve)
+            self.plotWidget.addItem(self.leftPathCurve)
 
 
     def drawCarPath(self):
@@ -192,19 +221,24 @@ class LidarGUI(QWidget):
 
         # Right line
         self.rightPathLine = pg.InfiniteLine(
-            pos=QPointF(self.halfCarWidth * np.cos(np.deg2rad(self.driveAngle)), \
-                        self.halfCarWidth * np.sin(np.deg2rad(self.driveAngle))), \
-            angle=self.driveAngle + 90, \
+            pos=QPointF(self.halfCarWidth, 0), \
+            angle=90, \
             pen=pen)
-        self.plotWidget.addItem(self.rightPathLine)
-
-        # Left line
         self.leftPathLine = pg.InfiniteLine(
-            pos=QPointF(-self.halfCarWidth * np.cos(np.deg2rad(self.driveAngle)), \
-                        -self.halfCarWidth * np.sin(np.deg2rad(self.driveAngle))), \
-            angle=self.driveAngle + 90, \
+            pos=QPointF(-self.halfCarWidth, 0), \
+            angle=90, \
             pen=pen)
-        self.plotWidget.addItem(self.leftPathLine)
+        self.rightPathCurve = pg.QtGui.QGraphicsEllipseItem(0, -self.turnRadius/2, self.turnRadius, self.turnRadius)
+        self.rightPathCurve.setPen(pen)
+        self.leftPathCurve = pg.QtGui.QGraphicsEllipseItem(0, self.turnRadius/2, self.turnRadius, self.turnRadius)
+        self.leftPathCurve.setPen(pen)
+
+        if self.turnRadius == 0:
+            self.plotWidget.addItem(self.rightPathLine)
+            self.plotWidget.addItem(self.leftPathLine)
+        else:
+            self.plotWidget.addItem(self.rightPathCurve)
+            self.plotWidget.addItem(self.leftPathCurve)
 
 
     @pyqtSlot(object)
@@ -271,13 +305,13 @@ class LidarGUI(QWidget):
             self.worker.maxRange = val
 
 
-    def driveAngleSliderChanged(self):
+    def turnRadiusSliderChanged(self):
         """ Changes the drive angle of the car and therefore
             also the path that has to be checked for collisions. """
-        self.driveAngle = self.driveAngleSlider.value()
+        self.turnRadius = self.turnRadii[self.turnRadiusSlider.value()]
         self.redrawCarPath()
         if hasattr(self, 'worker'):
-            self.worker.driveAngle = self.driveAngle
+            self.worker.driveAngle = self.turnRadius
 
     def initLidar(self):
         """ Initializes Lidar sensor with fixed parameters. """
