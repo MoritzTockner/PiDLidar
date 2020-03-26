@@ -21,14 +21,14 @@ class Worker(QObject):
         self.halfCarWidth = halfCarWidth       # Car width in metres
         self.start.connect(self.run)    # Run method is executed if start signal is emitted
 
+    #@pyqtSlot()
+    #def run(self):
+    #    import cProfile
+    #    cProfile.runctx('self.run_()', globals(), locals(), 'profileWorkerThread')
+
+
     @pyqtSlot()
     def run(self):
-        import cProfile
-        cProfile.runctx('self.run_()', globals(), locals(), 'profileWorkerThread')
-
-
-    #@pyqtSlot()
-    def run_(self):
         """ Gets lidar data from sensor in a loop and emits a signal when new data arrived.
             Sleeps for a constant time before fetching new data from the sensor. """
         scan = PiDLidar.LaserScan()
@@ -69,14 +69,17 @@ class Worker(QObject):
                     maxRange = self.maxRange
 
                 # Find the collision range
-                collisionPoint = self.findCollisionPoint(data)
+                forwardCollisionPoint, backwardCollisionPoint = self.__findCollisionPoint(data)
 
                 # Notify GUI process to plot the sampled data
                 # and update the scaling of the plot if necessary
                 self.dataSignal.emit({
                     'points' : data,
                     'maxRange' : maxRange,
-                    'collisionPoint' : collisionPoint
+                    'collisionPoint' : {
+                        'forward' : forwardCollisionPoint,
+                        'backward' : backwardCollisionPoint
+                    }
                 })
                 fetchAndSignalTime = time.time() - fetchAndSignalTime
             if hardError:
@@ -90,7 +93,7 @@ class Worker(QObject):
                 print('Skipped a rotation')
 
 
-    def findCollisionPoint(self, points):
+    def __findCollisionPoint(self, points):
         if self.driveAngle == 0:
             # No normal vector is needed. Just check x values of the samples.
             collisionPoints = np.array(
@@ -98,9 +101,12 @@ class Worker(QObject):
                  for point in points \
                  if point['x'] <= self.halfCarWidth \
                  and point['x'] >= -self.halfCarWidth \
-                 and point['y'] >= self.minRange], \
+                 and abs(point['y']) >= self.minRange], \
                 dtype=[('pathDistance', float), ('carDistance', float)])
-            firstCollisionPoint = self.getMinCarDistance(collisionPoints)
+
+            firstForwardCollisionPoint, firstBackwardCollisionPoint \
+                 = self.__getMinCarDistance(collisionPoints)
+
         else:
             # Create a unit vector pointing in the direction of the current
             # drive angle.
@@ -122,26 +128,36 @@ class Worker(QObject):
                   pointDistance['carDistance']) \
                  for pointDistance in pointDistances \
                  if abs(pointDistance['pathDistance']) <= self.halfCarWidth \
-                 and pointDistance['carDistance'] >= self.minRange], \
+                 and abs(pointDistance['carDistance']) >= self.minRange], \
                  dtype=[('pathDistance', float), ('carDistance', float)])
             # Find minimum distance from a collision point to the car
-            firstCollisionPoint = self.getMinCarDistance(collisionPoints)
+            firstForwardCollisionPoint, firstBackwardCollisionPoint \
+                = self.__getMinCarDistance(collisionPoints)
 
-        return firstCollisionPoint
+        return firstForwardCollisionPoint, firstBackwardCollisionPoint
 
 
-    def getMinCarDistance(self, collisionPoints):
+    def __getMinCarDistance(self, collisionPoints):
+        """ Finds the points with the minimum positive carDistance
+            and the maximum negative carDistance. """
         if collisionPoints.size != 0:
-            minPoint = collisionPoints[0]
-        else:
-            minPoint = np.array(
-                [(0, self.maxRange)],
-                dtype=[('pathDistance', float),
-                       ('carDistance', float)])
+            minForwardPoint = np.Inf
+            minBackwardPoint = -np.Inf
 
         for point in collisionPoints:
-            if point['carDistance'] < minPoint['carDistance']:
-                minPoint = point
+            distance = point['carDistance']
+            if distance > 0:
+                if distance < minForwardPoint:
+                    minForwardPoint = distance
+            else:
+                if distance > minBackwardPoint:
+                    minBackwardPoint = distance
 
-        return minPoint
+        # If no point was found set to max range
+        if minForwardPoint == np.Inf:
+            minForwardPoint = self.maxRange
+        if minBackwardPoint == -np.Inf:
+            minBackwardPoint = -self.maxRange
+
+        return minForwardPoint, minBackwardPoint
 

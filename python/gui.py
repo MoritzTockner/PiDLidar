@@ -214,9 +214,13 @@ class LidarGUI(QWidget):
         if self.worker.autoScale:
             self.scalingSlider.setValue(self.scalings.index(next(x for x in self.scalings if x > data['maxRange'])))
             self.scalingSliderChanged()
-
+        # Plot data points
         self.plt.setData(data['points']['x'], data['points']['y'])
-        self.collisionRangeText.setPlainText(str(data['collisionPoint']['carDistance']))
+        # Show free path distance until collision, in text field
+        self.collisionRangeText.setPlainText('Free forward path:')
+        self.collisionRangeText.append('{:.2f}'.format(data['collisionPoint']['forward']) + 'm')
+        self.collisionRangeText.append('\nFree backward path:')
+        self.collisionRangeText.append('{:.2f}'.format(data['collisionPoint']['backward']) + 'm')
 
 
     def autoScalingToggled(self):
