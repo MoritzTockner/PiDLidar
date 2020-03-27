@@ -66,7 +66,7 @@ class LidarGUI(QWidget):
             self.initialMinRange, \
             self.initialMaxRange, \
             self.halfCarWidth, \
-            self.initialTurnRadius, \
+            self.turnRadius, \
             self.autoScalingCheck.isChecked())
         # Connect dataSignal of Worker to plotData method
         self.worker.dataSignal.connect(self.plotData)
@@ -188,57 +188,144 @@ class LidarGUI(QWidget):
             self.gridCircles[i-1].setPen(pg.mkPen(0.2))
             self.plotWidget.addItem(self.gridCircles[i-1])
 
+    def removePaths(self):
+        self.plotWidget.removeItem(self.rightPathCurve)
+        self.plotWidget.removeItem(self.leftPathCurve)
+        self.plotWidget.removeItem(self.rightPathCurveGreen)
+        self.plotWidget.removeItem(self.leftPathCurveGreen)
+        self.plotWidget.removeItem(self.rightPathLine)
+        self.plotWidget.removeItem(self.leftPathLine)
+        self.plotWidget.removeItem(self.rightPathLineGreen)
+        self.plotWidget.removeItem(self.leftPathLineGreen)
 
-    def redrawCarPath(self):
+
+    def redrawCarPath(self, collisionPoints=None):
         """ Updates the angle and position of the car path lines
             corresponding to the current drive angle. """
+        self.removePaths()
         if self.turnRadius == 0:
-            self.plotWidget.removeItem(self.rightPathCurve)
-            self.plotWidget.removeItem(self.leftPathCurve)
             self.plotWidget.addItem(self.rightPathLine)
             self.plotWidget.addItem(self.leftPathLine)
+            if collisionPoints is not None:
+                # Change length of the green lines
+                self.leftPathLineGreen.setLine( \
+                    -self.halfCarWidth, collisionPoints['backward'], \
+                    -self.halfCarWidth, collisionPoints['forward'])
+                self.plotWidget.addItem(self.leftPathLineGreen)
+
+                self.rightPathLineGreen.setLine( \
+                    self.halfCarWidth, collisionPoints['backward'], \
+                    self.halfCarWidth, collisionPoints['forward'])
+                self.plotWidget.addItem(self.rightPathLineGreen)
+
         else:
-            self.plotWidget.removeItem(self.rightPathLine)
-            self.plotWidget.removeItem(self.leftPathLine)
-            #if self.turnRadius > :
+            # Change radius of the right curves
             self.rightPathCurve.setRect(
-                    self.halfCarWidth,
-                    -self.turnRadius + self.halfCarWidth,
-                    2*self.turnRadius - self.halfCarWidth*2,
-                    2*self.turnRadius - self.halfCarWidth*2)
+                self.halfCarWidth,
+                -self.turnRadius + self.halfCarWidth,
+                2*self.turnRadius - self.halfCarWidth*2,
+                2*self.turnRadius - self.halfCarWidth*2)
+            self.rightPathCurveGreen.setRect(
+                self.halfCarWidth,
+                -self.turnRadius + self.halfCarWidth,
+                2*self.turnRadius - self.halfCarWidth*2,
+                2*self.turnRadius - self.halfCarWidth*2)
+
+            # Change radius of the left curves
             self.leftPathCurve.setRect(
-                    -self.halfCarWidth,
-                    -self.turnRadius - self.halfCarWidth,
-                    2*self.turnRadius + self.halfCarWidth*2,
-                    2*self.turnRadius + self.halfCarWidth*2)
+                -self.halfCarWidth,
+                -self.turnRadius - self.halfCarWidth,
+                2*self.turnRadius + self.halfCarWidth*2,
+                2*self.turnRadius + self.halfCarWidth*2)
+            self.leftPathCurveGreen.setRect(
+                -self.halfCarWidth,
+                -self.turnRadius - self.halfCarWidth,
+                2*self.turnRadius + self.halfCarWidth*2,
+                2*self.turnRadius + self.halfCarWidth*2)
+            if collisionPoints is not None:
+                # Change span angle of the right green curve
+                self.rightPathCurveGreen.setSpanAngle(
+                    np.rad2deg((collisionPoints['forward'] - collisionPoints['backward'])/self.turnRadius)*16)
+
+                # Change span angle of the left green curve
+                self.leftPathCurveGreen.setSpanAngle(
+                    np.rad2deg((collisionPoints['forward'] - collisionPoints['backward'])/self.turnRadius)*16)
+
+                if self.turnRadius < 0:
+                    # Left turn
+                    self.rightPathCurveGreen.setStartAngle(
+                        np.rad2deg(collisionPoints['backward']/self.turnRadius)*16)
+                    self.leftPathCurveGreen.setStartAngle(
+                        np.rad2deg(collisionPoints['backward']/self.turnRadius)*16)
+                else:
+                    # Right turn
+                    self.rightPathCurveGreen.setStartAngle(
+                        (np.rad2deg(-collisionPoints['forward']/self.turnRadius) + 180)*16)
+                    self.leftPathCurveGreen.setStartAngle(
+                        (np.rad2deg(-collisionPoints['forward']/self.turnRadius) + 180)*16)
+
+                self.plotWidget.addItem(self.rightPathCurveGreen)
+                self.plotWidget.addItem(self.leftPathCurveGreen)
+
             self.plotWidget.addItem(self.rightPathCurve)
             self.plotWidget.addItem(self.leftPathCurve)
 
 
     def drawCarPath(self):
         """ Draws the current path of the car in red dashed lines. """
-        pen = pg.mkPen('r', width=0.5, style=Qt.DashLine)
+        self.redPen = pg.mkPen('r', width=0.5, style=Qt.DashLine)
+        self.greenPen = pg.mkPen('g', width=0.5, style=Qt.DashLine)
 
         # Right line
         self.rightPathLine = pg.InfiniteLine(
             pos=QPointF(self.halfCarWidth, 0), \
             angle=90, \
-            pen=pen)
+            pen=self.redPen)
+        self.rightPathLineGreen = pg.QtGui.QGraphicsLineItem( \
+            self.halfCarWidth, -self.scalings[self.scalingSlider.value()], \
+            self.halfCarWidth, -self.scalings[self.scalingSlider.value()])
+        self.rightPathLineGreen.setPen(self.greenPen)
+
+        # Left line
         self.leftPathLine = pg.InfiniteLine(
             pos=QPointF(-self.halfCarWidth, 0), \
             angle=90, \
-            pen=pen)
-        self.rightPathCurve = pg.QtGui.QGraphicsEllipseItem(0, -self.turnRadius/2, self.turnRadius, self.turnRadius)
-        self.rightPathCurve.setPen(pen)
-        self.leftPathCurve = pg.QtGui.QGraphicsEllipseItem(0, self.turnRadius/2, self.turnRadius, self.turnRadius)
-        self.leftPathCurve.setPen(pen)
+            pen=self.redPen)
+        self.leftPathLineGreen = pg.QtGui.QGraphicsLineItem( \
+            -self.halfCarWidth, -self.scalings[self.scalingSlider.value()], \
+            -self.halfCarWidth, -self.scalings[self.scalingSlider.value()])
+        self.leftPathLineGreen.setPen(self.greenPen)
+
+        # Right curve
+        self.rightPathCurve = pg.QtGui.QGraphicsEllipseItem( \
+            0, -self.turnRadius/2, \
+            self.turnRadius, self.turnRadius)
+        self.rightPathCurve.setPen(self.redPen)
+        self.rightPathCurveGreen = pg.QtGui.QGraphicsEllipseItem( \
+            0, -self.turnRadius/2, \
+            self.turnRadius, self.turnRadius)
+        self.rightPathCurveGreen.setPen(self.greenPen)
+
+        # Left curve
+        self.leftPathCurve = pg.QtGui.QGraphicsEllipseItem( \
+            0, self.turnRadius/2, \
+            self.turnRadius, self.turnRadius)
+        self.leftPathCurve.setPen(self.redPen)
+        self.leftPathCurveGreen = pg.QtGui.QGraphicsEllipseItem( \
+            0, self.turnRadius/2, \
+            self.turnRadius, self.turnRadius)
+        self.leftPathCurveGreen.setPen(self.greenPen)
 
         if self.turnRadius == 0:
             self.plotWidget.addItem(self.rightPathLine)
+            self.plotWidget.addItem(self.rightPathLineGreen)
             self.plotWidget.addItem(self.leftPathLine)
+            self.plotWidget.addItem(self.leftPathLineGreen)
         else:
             self.plotWidget.addItem(self.rightPathCurve)
             self.plotWidget.addItem(self.leftPathCurve)
+            self.plotWidget.addItem(self.rightPathCurveGreen)
+            self.plotWidget.addItem(self.leftPathCurveGreen)
 
 
     @pyqtSlot(object)
@@ -251,6 +338,7 @@ class LidarGUI(QWidget):
         # Plot data points
         self.plt.setData(data['points']['x'], data['points']['y'])
         # Show free path distance until collision, in text field
+        self.redrawCarPath(data['collisionPoint'])
         self.collisionRangeText.setPlainText('Free forward path:')
         self.collisionRangeText.append('{:.2f}'.format(data['collisionPoint']['forward']) + 'm')
         self.collisionRangeText.append('\nFree backward path:')
@@ -311,7 +399,7 @@ class LidarGUI(QWidget):
         self.turnRadius = self.turnRadii[self.turnRadiusSlider.value()]
         self.redrawCarPath()
         if hasattr(self, 'worker'):
-            self.worker.driveAngle = self.turnRadius
+            self.worker.turnRadius = self.turnRadius
 
     def initLidar(self):
         """ Initializes Lidar sensor with fixed parameters. """

@@ -10,14 +10,14 @@ class Worker(QObject):
     start = pyqtSignal()        # Starts the run method
     dataSignal = pyqtSignal(object)     # Notifies GUI thread to update plot with object as data
 
-    def __init__(self, laser, minRange, maxRange, halfCarWidth, driveAngle, autoScale):
+    def __init__(self, laser, minRange, maxRange, halfCarWidth, turnRadius, autoScale):
         QThread.__init__(self)
         self.laser = laser      # CYdLidar class object
         self.finish = False     # Is set to true when stop button is pressed to close worker thread
         self.maxRange = maxRange
         self.minRange = minRange
         self.autoScale = autoScale
-        self.driveAngle = driveAngle     # Angle in degree for which collision range will be calculated
+        self.turnRadius = turnRadius     # Curve radius of the path for which the collision range will be calculated
         self.halfCarWidth = halfCarWidth       # Car width in metres
         self.start.connect(self.run)    # Run method is executed if start signal is emitted
 
@@ -94,7 +94,7 @@ class Worker(QObject):
 
 
     def __findCollisionPoint(self, points):
-        if self.driveAngle == 0:
+        if self.turnRadius == 0:
             # No normal vector is needed. Just check x values of the samples.
             collisionPoints = np.array(
                 [(point['x'], point['y']) \
@@ -104,35 +104,27 @@ class Worker(QObject):
                  and abs(point['y']) >= self.minRange], \
                 dtype=[('pathDistance', float), ('carDistance', float)])
 
-            firstForwardCollisionPoint, firstBackwardCollisionPoint \
-                 = self.__getMinCarDistance(collisionPoints)
-
         else:
-            # Create a unit vector pointing in the direction of the current
-            # drive angle.
-            pathVec = (np.cos(np.deg2rad(self.driveAngle + 90)),
-                       np.sin(np.deg2rad(self.driveAngle + 90)))
-            # Calculate a normal vector of the current path angle
-            normalVec = (pathVec[1], -pathVec[0])
-            # Calculate the distance from the points to the driving path line
-            # via the scalar product of the normal vector and the point vectors
-            # and the distance from these points to the car (= coordinate origin)
-            pointDistances = np.array(
-                [(point['x']*normalVec[0] + point['y']*normalVec[1], \
-                  point['x']*pathVec[0] + point['y']*pathVec[1]) \
+            # Translate all samples so that the middle of the circle is
+            # the new coordinate origin and convert to polar coordinates.
+            translatedPoints = np.array(
+                [(np.sqrt((point['x'] - self.turnRadius)**2 + point['y']**2), \
+                  np.arctan(point['y']/(point['x'] - self.turnRadius))) \
                  for point in points], \
-                 dtype=[('pathDistance', float), ('carDistance', float)])
-            # Select the points with which the car would collide on its path
+                dtype=[('radius', float), ('angle', float)])
+
+            # Select all points that are in the car path and store their
+            # path distance to the car (circular segment) and to the path
             collisionPoints = np.array(
-                [(pointDistance['pathDistance'], \
-                  pointDistance['carDistance']) \
-                 for pointDistance in pointDistances \
-                 if abs(pointDistance['pathDistance']) <= self.halfCarWidth \
-                 and abs(pointDistance['carDistance']) >= self.minRange], \
-                 dtype=[('pathDistance', float), ('carDistance', float)])
-            # Find minimum distance from a collision point to the car
-            firstForwardCollisionPoint, firstBackwardCollisionPoint \
-                = self.__getMinCarDistance(collisionPoints)
+                [(abs(self.turnRadius) - point['radius'], \
+                  point['angle'] * abs(self.turnRadius))
+                 for point in translatedPoints \
+                 if point['radius'] <= abs(self.turnRadius) + self.halfCarWidth \
+                 and point['radius'] >= abs(self.turnRadius) - self.halfCarWidth], \
+                dtype=[('pathDistance', float), ('carDistance', float)])
+
+        firstForwardCollisionPoint, firstBackwardCollisionPoint \
+            = self.__getMinCarDistance(collisionPoints)
 
         return firstForwardCollisionPoint, firstBackwardCollisionPoint
 
@@ -140,9 +132,8 @@ class Worker(QObject):
     def __getMinCarDistance(self, collisionPoints):
         """ Finds the points with the minimum positive carDistance
             and the maximum negative carDistance. """
-        if collisionPoints.size != 0:
-            minForwardPoint = np.Inf
-            minBackwardPoint = -np.Inf
+        minForwardPoint  =  np.Inf
+        minBackwardPoint = -np.Inf
 
         for point in collisionPoints:
             distance = point['carDistance']
@@ -154,10 +145,16 @@ class Worker(QObject):
                     minBackwardPoint = distance
 
         # If no point was found set to max range
-        if minForwardPoint == np.Inf:
-            minForwardPoint = self.maxRange
-        if minBackwardPoint == -np.Inf:
-            minBackwardPoint = -self.maxRange
+        if self.turnRadius == 0:
+            if minForwardPoint == np.Inf:
+                minForwardPoint = self.maxRange
+            if minBackwardPoint == -np.Inf:
+                minBackwardPoint = -self.maxRange
+        else:
+            if minForwardPoint == np.Inf:
+                minForwardPoint = abs(self.turnRadius) * np.pi
+            if minBackwardPoint == -np.Inf:
+                minBackwardPoint = -abs(self.turnRadius) * np.pi
 
         return minForwardPoint, minBackwardPoint
 
