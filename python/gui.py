@@ -27,7 +27,7 @@ class LidarGUI(QWidget):
         self.turnRadiusMin = 0.5
         self.turnRadiusMax = 100
         self.nrOfTurnRadii = 25
-        self.createTurnRadiiLookupTable()
+        self.turnRadii = self.createTurnRadiiLookupTable()
         self.initialTurnRadius = 0      # Angle in degree for which collision range will be calculated
         self.turnRadius = self.initialTurnRadius
         self.initLidar()
@@ -42,16 +42,17 @@ class LidarGUI(QWidget):
     def createTurnRadiiLookupTable(self):
         # nrOfTurnRadii different radii for every direction,
         # +1 for the case turnRadius = Inf --> straight line
-        self.turnRadii = np.zeros(self.nrOfTurnRadii*2 + 1)
-        self.turnRadii[:self.nrOfTurnRadii] = -1*np.logspace(
+        turnRadii = np.zeros(self.nrOfTurnRadii*2 + 1)
+        turnRadii[:self.nrOfTurnRadii] = -1*np.logspace(
             np.log10(self.turnRadiusMin),
             np.log10(self.turnRadiusMax),
             self.nrOfTurnRadii)
-        self.turnRadii[self.nrOfTurnRadii] = 0
-        self.turnRadii[self.nrOfTurnRadii+1:] = np.logspace(
+        turnRadii[self.nrOfTurnRadii] = 0
+        turnRadii[self.nrOfTurnRadii+1:] = np.logspace(
             np.log10(self.turnRadiusMax),
             np.log10(self.turnRadiusMin),
             self.nrOfTurnRadii)
+        return turnRadii
 
     def initWorkerThread(self):
         """ Creates a new thread and assigns an instance of the Worker class to it. """
@@ -62,11 +63,11 @@ class LidarGUI(QWidget):
         self.thread.start()
         # Create worker object that updates lidar data plot
         self.worker = worker.Worker(
-            self.laser, \
-            self.initialMinRange, \
-            self.initialMaxRange, \
-            self.halfCarWidth, \
-            self.turnRadius, \
+            self.laser,
+            self.initialMinRange,
+            self.initialMaxRange,
+            self.halfCarWidth,
+            self.turnRadius,
             self.autoScalingCheck.isChecked())
         # Connect dataSignal of Worker to plotData method
         self.worker.dataSignal.connect(self.plotData)
@@ -145,10 +146,10 @@ class LidarGUI(QWidget):
         self.drawGraph()
         # Add plotDataItem so that plt.setData can be used
         self.plt = self.plotWidget.plot(
-            pen=None, \
-            symbol='o', \
-            symbolSize=2, \
-            symbolPen='w', \
+            pen=None,
+            symbol='o',
+            symbolSize=2,
+            symbolPen='w',
             symbolBrush='w')
 
         hbox.addWidget(self.plotWidget, 3)
@@ -159,6 +160,7 @@ class LidarGUI(QWidget):
 
         # Show the gui window
         self.showFullScreen()
+        self.show()
         print('GUI Initialized')
 
     def drawGraph(self):
@@ -208,13 +210,13 @@ class LidarGUI(QWidget):
             self.plotWidget.addItem(self.leftPathLine)
             if collisionPoints is not None:
                 # Change length of the green lines
-                self.leftPathLineGreen.setLine( \
-                    -self.halfCarWidth, collisionPoints['backward'], \
+                self.leftPathLineGreen.setLine(
+                    -self.halfCarWidth, collisionPoints['backward'],
                     -self.halfCarWidth, collisionPoints['forward'])
                 self.plotWidget.addItem(self.leftPathLineGreen)
 
-                self.rightPathLineGreen.setLine( \
-                    self.halfCarWidth, collisionPoints['backward'], \
+                self.rightPathLineGreen.setLine(
+                    self.halfCarWidth, collisionPoints['backward'],
                     self.halfCarWidth, collisionPoints['forward'])
                 self.plotWidget.addItem(self.rightPathLineGreen)
 
@@ -278,41 +280,41 @@ class LidarGUI(QWidget):
 
         # Right line
         self.rightPathLine = pg.InfiniteLine(
-            pos=QPointF(self.halfCarWidth, 0), \
-            angle=90, \
+            pos=QPointF(self.halfCarWidth, 0),
+            angle=90,
             pen=self.redPen)
-        self.rightPathLineGreen = pg.QtGui.QGraphicsLineItem( \
-            self.halfCarWidth, -self.scalings[self.scalingSlider.value()], \
+        self.rightPathLineGreen = pg.QtGui.QGraphicsLineItem(
+            self.halfCarWidth, -self.scalings[self.scalingSlider.value()],
             self.halfCarWidth, -self.scalings[self.scalingSlider.value()])
         self.rightPathLineGreen.setPen(self.greenPen)
 
         # Left line
         self.leftPathLine = pg.InfiniteLine(
-            pos=QPointF(-self.halfCarWidth, 0), \
-            angle=90, \
+            pos=QPointF(-self.halfCarWidth, 0),
+            angle=90,
             pen=self.redPen)
-        self.leftPathLineGreen = pg.QtGui.QGraphicsLineItem( \
-            -self.halfCarWidth, -self.scalings[self.scalingSlider.value()], \
+        self.leftPathLineGreen = pg.QtGui.QGraphicsLineItem(
+            -self.halfCarWidth, -self.scalings[self.scalingSlider.value()],
             -self.halfCarWidth, -self.scalings[self.scalingSlider.value()])
         self.leftPathLineGreen.setPen(self.greenPen)
 
         # Right curve
         self.rightPathCurve = pg.QtGui.QGraphicsEllipseItem( \
-            0, -self.turnRadius/2, \
+            0, -self.turnRadius/2,
             self.turnRadius, self.turnRadius)
         self.rightPathCurve.setPen(self.redPen)
         self.rightPathCurveGreen = pg.QtGui.QGraphicsEllipseItem( \
-            0, -self.turnRadius/2, \
+            0, -self.turnRadius/2,
             self.turnRadius, self.turnRadius)
         self.rightPathCurveGreen.setPen(self.greenPen)
 
         # Left curve
-        self.leftPathCurve = pg.QtGui.QGraphicsEllipseItem( \
-            0, self.turnRadius/2, \
+        self.leftPathCurve = pg.QtGui.QGraphicsEllipseItem(
+            0, self.turnRadius/2,
             self.turnRadius, self.turnRadius)
         self.leftPathCurve.setPen(self.redPen)
-        self.leftPathCurveGreen = pg.QtGui.QGraphicsEllipseItem( \
-            0, self.turnRadius/2, \
+        self.leftPathCurveGreen = pg.QtGui.QGraphicsEllipseItem(
+            0, self.turnRadius/2,
             self.turnRadius, self.turnRadius)
         self.leftPathCurveGreen.setPen(self.greenPen)
 
@@ -405,6 +407,7 @@ class LidarGUI(QWidget):
         """ Initializes Lidar sensor with fixed parameters. """
         self.laser = PiDLidar.CYdLidar()
         port = '/dev/ttyUSB0'
+#        port = 'COM3'
         baudrate = 128000
         fixedResolution = False
         reversion = False
