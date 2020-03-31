@@ -1,7 +1,9 @@
 import sys
-from PyQt5.QtWidgets import (QTextEdit, QSizePolicy, QSlider, QCheckBox, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QApplication)
+from PyQt5.QtWidgets import (QTextEdit, QSizePolicy, QSlider, QCheckBox, QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
+                             QApplication)
 from PyQt5.QtCore import (Qt, QThread, QObject, pyqtSlot, pyqtSignal, QPointF)
 import pyqtgraph as pg
+
 import numpy as np
 import PiDLidar
 import worker
@@ -23,16 +25,15 @@ class LidarGUI(QWidget):
         self.nrOfGridCircles = 10
         self.initialMinRange = 0.1
         self.initialMaxRange = self.scalings[0]
-        self.halfCarWidth = 0.1         # Car width in meters
+        self.halfCarWidth = 0.1  # Car width in meters
         self.turnRadiusMin = 0.5
         self.turnRadiusMax = 100
-        self.nrOfTurnRadii = 25
+        self.nrOfTurnRadii = 50
         self.turnRadii = self.createTurnRadiiLookupTable()
-        self.initialTurnRadius = 0      # Angle in degree for which collision range will be calculated
+        self.initialTurnRadius = 0  # Angle in degree for which collision range will be calculated
         self.turnRadius = self.initialTurnRadius
         self.initLidar()
         self.initUI()
-
 
     def __del__(self):
         """ Stop Lidar and disconnect serial connection. """
@@ -42,13 +43,13 @@ class LidarGUI(QWidget):
     def createTurnRadiiLookupTable(self):
         # nrOfTurnRadii different radii for every direction,
         # +1 for the case turnRadius = Inf --> straight line
-        turnRadii = np.zeros(self.nrOfTurnRadii*2 + 1)
-        turnRadii[:self.nrOfTurnRadii] = -1*np.logspace(
+        turnRadii = np.zeros(self.nrOfTurnRadii * 2 + 1)
+        turnRadii[:self.nrOfTurnRadii] = -1 * np.logspace(
             np.log10(self.turnRadiusMin),
             np.log10(self.turnRadiusMax),
             self.nrOfTurnRadii)
         turnRadii[self.nrOfTurnRadii] = 0
-        turnRadii[self.nrOfTurnRadii+1:] = np.logspace(
+        turnRadii[self.nrOfTurnRadii + 1:] = np.logspace(
             np.log10(self.turnRadiusMax),
             np.log10(self.turnRadiusMin),
             self.nrOfTurnRadii)
@@ -77,13 +78,11 @@ class LidarGUI(QWidget):
         self.worker.start.emit()
         print('Worker thread initialized')
 
-
     def stopWorkerThread(self):
         """ Shuts down the workerthread safely. """
-        self.worker.finish = True # Let worker thread exit main loop
-        self.thread.quit() # Quit the worker thread
-        self.thread.wait() # Wait until worker thread has quit
-
+        self.worker.finish = True  # Let worker thread exit main loop
+        self.thread.quit()  # Quit the worker thread
+        self.thread.wait()  # Wait until worker thread has quit
 
     def initUI(self):
         """ Initialization of all UI Widgets. """
@@ -116,7 +115,7 @@ class LidarGUI(QWidget):
         # Create slider for adjusting the car turn radius
         self.turnRadiusSlider = QSlider(orientation=Qt.Horizontal)
         self.turnRadiusSlider.setMinimum(0)
-        self.turnRadiusSlider.setMaximum(self.nrOfTurnRadii*2)
+        self.turnRadiusSlider.setMaximum(self.nrOfTurnRadii * 2)
         self.turnRadiusSlider.setTickPosition(QSlider.TicksAbove)
         self.turnRadiusSlider.setTickInterval(1)
         self.turnRadiusSlider.setValue(self.nrOfTurnRadii)
@@ -159,7 +158,7 @@ class LidarGUI(QWidget):
         self.setWindowTitle('Lidar')
 
         # Show the gui window
-        self.showFullScreen()
+        # self.showFullScreen()
         self.show()
         print('GUI Initialized')
 
@@ -170,13 +169,11 @@ class LidarGUI(QWidget):
         # Draw car path lines
         self.drawCarPath()
 
-
     def redrawGrid(self):
         """ Changes the polar grid lines according to the caling value. """
         for i in np.arange(1, self.nrOfGridCircles + 1, 1):
-            r = i/10*self.scalings[self.scalingSlider.value()]
-            self.gridCircles[i-1].setRect(-r, -r, r*2, r*2)
-
+            r = i / 10 * self.scalings[self.scalingSlider.value()]
+            self.gridCircles[i - 1].setRect(-r, -r, r * 2, r * 2)
 
     def drawGrid(self):
         """ Draws the horizontal and vertical axis and polar grid circles. """
@@ -185,12 +182,12 @@ class LidarGUI(QWidget):
         self.plotWidget.addLine(y=0, pen=0.2)
         # Add polar grid circles
         for i in np.arange(1, self.nrOfGridCircles + 1, 1):
-            r = i/10*self.scalings[self.scalingSlider.value()]
-            self.gridCircles.append(pg.QtGui.QGraphicsEllipseItem(-r, -r, r*2, r*2))
-            self.gridCircles[i-1].setPen(pg.mkPen(0.2))
-            self.plotWidget.addItem(self.gridCircles[i-1])
+            r = i / 10 * self.scalings[self.scalingSlider.value()]
+            self.gridCircles.append(pg.QtGui.QGraphicsEllipseItem(-r, -r, r * 2, r * 2))
+            self.gridCircles[i - 1].setPen(pg.mkPen(0.2))
+            self.plotWidget.addItem(self.gridCircles[i - 1])
 
-    def removePaths(self):
+    def removeCarPath(self):
         self.plotWidget.removeItem(self.rightPathCurve)
         self.plotWidget.removeItem(self.leftPathCurve)
         self.plotWidget.removeItem(self.rightPathCurveGreen)
@@ -200,11 +197,10 @@ class LidarGUI(QWidget):
         self.plotWidget.removeItem(self.rightPathLineGreen)
         self.plotWidget.removeItem(self.leftPathLineGreen)
 
-
     def redrawCarPath(self, collisionPoints=None):
         """ Updates the angle and position of the car path lines
             corresponding to the current drive angle. """
-        self.removePaths()
+        self.removeCarPath()
         if self.turnRadius == 0:
             self.plotWidget.addItem(self.rightPathLine)
             self.plotWidget.addItem(self.leftPathLine)
@@ -219,59 +215,57 @@ class LidarGUI(QWidget):
                     self.halfCarWidth, collisionPoints['backward'],
                     self.halfCarWidth, collisionPoints['forward'])
                 self.plotWidget.addItem(self.rightPathLineGreen)
-
         else:
             # Change radius of the right curves
             self.rightPathCurve.setRect(
                 self.halfCarWidth,
                 -self.turnRadius + self.halfCarWidth,
-                2*self.turnRadius - self.halfCarWidth*2,
-                2*self.turnRadius - self.halfCarWidth*2)
+                2 * self.turnRadius - self.halfCarWidth * 2,
+                2 * self.turnRadius - self.halfCarWidth * 2)
             self.rightPathCurveGreen.setRect(
                 self.halfCarWidth,
                 -self.turnRadius + self.halfCarWidth,
-                2*self.turnRadius - self.halfCarWidth*2,
-                2*self.turnRadius - self.halfCarWidth*2)
+                2 * self.turnRadius - self.halfCarWidth * 2,
+                2 * self.turnRadius - self.halfCarWidth * 2)
 
             # Change radius of the left curves
             self.leftPathCurve.setRect(
                 -self.halfCarWidth,
                 -self.turnRadius - self.halfCarWidth,
-                2*self.turnRadius + self.halfCarWidth*2,
-                2*self.turnRadius + self.halfCarWidth*2)
+                2 * self.turnRadius + self.halfCarWidth * 2,
+                2 * self.turnRadius + self.halfCarWidth * 2)
             self.leftPathCurveGreen.setRect(
                 -self.halfCarWidth,
                 -self.turnRadius - self.halfCarWidth,
-                2*self.turnRadius + self.halfCarWidth*2,
-                2*self.turnRadius + self.halfCarWidth*2)
-            if collisionPoints is not None:
-                # Change span angle of the right green curve
-                self.rightPathCurveGreen.setSpanAngle(
-                    np.rad2deg((collisionPoints['forward'] - collisionPoints['backward'])/self.turnRadius)*16)
-
-                # Change span angle of the left green curve
-                self.leftPathCurveGreen.setSpanAngle(
-                    np.rad2deg((collisionPoints['forward'] - collisionPoints['backward'])/self.turnRadius)*16)
-
-                if self.turnRadius < 0:
-                    # Left turn
-                    self.rightPathCurveGreen.setStartAngle(
-                        np.rad2deg(collisionPoints['backward']/self.turnRadius)*16)
-                    self.leftPathCurveGreen.setStartAngle(
-                        np.rad2deg(collisionPoints['backward']/self.turnRadius)*16)
-                else:
-                    # Right turn
-                    self.rightPathCurveGreen.setStartAngle(
-                        (np.rad2deg(-collisionPoints['forward']/self.turnRadius) + 180)*16)
-                    self.leftPathCurveGreen.setStartAngle(
-                        (np.rad2deg(-collisionPoints['forward']/self.turnRadius) + 180)*16)
-
-                self.plotWidget.addItem(self.rightPathCurveGreen)
-                self.plotWidget.addItem(self.leftPathCurveGreen)
+                2 * self.turnRadius + self.halfCarWidth * 2,
+                2 * self.turnRadius + self.halfCarWidth * 2)
 
             self.plotWidget.addItem(self.rightPathCurve)
             self.plotWidget.addItem(self.leftPathCurve)
 
+            if collisionPoints is not None:
+                # Calculate the new span angle in 1/16 degrees for the setSpanAngle() function
+                newSpanAngle = np.rad2deg((collisionPoints['forward']
+                                           - collisionPoints['backward']) / self.turnRadius) * 16
+
+                # Change span angle of the right green curve
+                self.rightPathCurveGreen.setSpanAngle(newSpanAngle)
+
+                # Change span angle of the left green curve
+                self.leftPathCurveGreen.setSpanAngle(newSpanAngle)
+
+                if self.turnRadius > 0:
+                    # Right turn
+                    newStartAngle = (np.rad2deg(collisionPoints['backward'] / self.turnRadius) + 180) * 16
+                else:
+                    # Left turn
+                    newStartAngle = np.rad2deg(collisionPoints['backward'] / self.turnRadius) * 16
+
+                self.rightPathCurveGreen.setStartAngle(newStartAngle)
+                self.leftPathCurveGreen.setStartAngle(newStartAngle)
+
+                self.plotWidget.addItem(self.rightPathCurveGreen)
+                self.plotWidget.addItem(self.leftPathCurveGreen)
 
     def drawCarPath(self):
         """ Draws the current path of the car in red dashed lines. """
@@ -299,22 +293,24 @@ class LidarGUI(QWidget):
         self.leftPathLineGreen.setPen(self.greenPen)
 
         # Right curve
-        self.rightPathCurve = pg.QtGui.QGraphicsEllipseItem( \
-            0, -self.turnRadius/2,
+        self.rightPathCurve = pg.QtGui.QGraphicsEllipseItem(
+            0, -self.turnRadius / 2,
             self.turnRadius, self.turnRadius)
         self.rightPathCurve.setPen(self.redPen)
-        self.rightPathCurveGreen = pg.QtGui.QGraphicsEllipseItem( \
-            0, -self.turnRadius/2,
+
+
+        self.rightPathCurveGreen = pg.QtGui.QGraphicsEllipseItem(
+            0, -self.turnRadius / 2,
             self.turnRadius, self.turnRadius)
         self.rightPathCurveGreen.setPen(self.greenPen)
 
         # Left curve
         self.leftPathCurve = pg.QtGui.QGraphicsEllipseItem(
-            0, self.turnRadius/2,
+            0, self.turnRadius / 2,
             self.turnRadius, self.turnRadius)
         self.leftPathCurve.setPen(self.redPen)
         self.leftPathCurveGreen = pg.QtGui.QGraphicsEllipseItem(
-            0, self.turnRadius/2,
+            0, self.turnRadius / 2,
             self.turnRadius, self.turnRadius)
         self.leftPathCurveGreen.setPen(self.greenPen)
 
@@ -328,7 +324,6 @@ class LidarGUI(QWidget):
             self.plotWidget.addItem(self.leftPathCurve)
             self.plotWidget.addItem(self.rightPathCurveGreen)
             self.plotWidget.addItem(self.leftPathCurveGreen)
-
 
     @pyqtSlot(object)
     def plotData(self, data):
@@ -346,14 +341,12 @@ class LidarGUI(QWidget):
         self.collisionRangeText.append('\nFree backward path:')
         self.collisionRangeText.append('{:.2f}'.format(data['collisionPoint']['backward']) + 'm')
 
-
     def autoScalingToggled(self):
         """ Notify worker that autoscaling is enabled/disabled """
         status = self.autoScalingCheck.isChecked()
         self.scalingSlider.setEnabled(not status)
         if hasattr(self, 'worker'):
             self.worker.autoScale = self.autoScalingCheck.isChecked()
-
 
     def startBtnClicked(self):
         """ Start the laser. """
@@ -364,7 +357,6 @@ class LidarGUI(QWidget):
             self.runtime = time.time()
             return self.laser.turnOn()
 
-
     def stopBtnClicked(self):
         """ Stop the laser. """
         if self.started:
@@ -373,8 +365,7 @@ class LidarGUI(QWidget):
             self.stopWorkerThread()
             print('Laser stopped')
             print('Laser scanned for {} seconds'.format(self.runtime))
-            return self.laser.turnOff() # Stop Lidar
-
+            return self.laser.turnOff()  # Stop Lidar
 
     def exitBtnClicked(self):
         """ Stop the laser and exit the application. """
@@ -384,7 +375,6 @@ class LidarGUI(QWidget):
         print('Exiting application')
         self.close()
 
-
     def scalingSliderChanged(self):
         """ Changes the scaling of the plot. """
         val = self.scalings[self.scalingSlider.value()]
@@ -393,7 +383,6 @@ class LidarGUI(QWidget):
         self.redrawGrid()
         if hasattr(self, 'worker'):
             self.worker.maxRange = val
-
 
     def turnRadiusSliderChanged(self):
         """ Changes the drive angle of the car and therefore
@@ -406,8 +395,8 @@ class LidarGUI(QWidget):
     def initLidar(self):
         """ Initializes Lidar sensor with fixed parameters. """
         self.laser = PiDLidar.CYdLidar()
-        port = '/dev/ttyUSB0'
-#        port = 'COM3'
+        #        port = '/dev/ttyUSB0'
+        port = 'COM3'
         baudrate = 128000
         fixedResolution = False
         reversion = False
@@ -458,11 +447,12 @@ class LidarGUI(QWidget):
 
         return self.laser.initialize()
 
+
 def __main__():
     app = QApplication(sys.argv)
     lidargui = LidarGUI()
     return app.exec_()
 
+
 if __name__ == '__main__':
     sys.exit(__main__())
-

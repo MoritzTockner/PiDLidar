@@ -1,31 +1,29 @@
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import (QThread, QObject, pyqtSlot, pyqtSignal)
-import numpy as np
-import PiDLidar
 import time
+
+import PiDLidar
+import numpy as np
+from PyQt5.QtCore import (QThread, QObject, pyqtSlot, pyqtSignal)
 
 
 class Worker(QObject):
-
-    start = pyqtSignal()        # Starts the run method
-    dataSignal = pyqtSignal(object)     # Notifies GUI thread to update plot with object as data
+    start = pyqtSignal()  # Starts the run method
+    dataSignal = pyqtSignal(object)  # Notifies GUI thread to update plot with object as data
 
     def __init__(self, laser, minRange, maxRange, halfCarWidth, turnRadius, autoScale):
-        QThread.__init__(self)
-        self.laser = laser      # CYdLidar class object
-        self.finish = False     # Is set to true when stop button is pressed to close worker thread
+        QObject.__init__(self)
+        self.laser = laser  # CYdLidar class object
+        self.finish = False  # Is set to true when stop button is pressed to close worker thread
         self.maxRange = maxRange
         self.minRange = minRange
         self.autoScale = autoScale
-        self.turnRadius = turnRadius     # Curve radius of the path for which the collision range will be calculated
-        self.halfCarWidth = halfCarWidth       # Car width in metres
-        self.start.connect(self.run)    # Run method is executed if start signal is emitted
+        self.turnRadius = turnRadius  # Curve radius of the path for which the collision range will be calculated
+        self.halfCarWidth = halfCarWidth  # Car width in metres
+        self.start.connect(self.run)  # Run method is executed if start signal is emitted
 
-    #@pyqtSlot()
-    #def run(self):
+    # @pyqtSlot()
+    # def run(self):
     #    import cProfile
     #    cProfile.runctx('self.run_()', globals(), locals(), 'profileWorkerThread')
-
 
     @pyqtSlot()
     def run(self):
@@ -48,10 +46,10 @@ class Worker(QObject):
                     # except the ones under 0.1 meters. They are mapped to 0 by the sensor
                     # because that is below the minimal range.
                     data = np.array(
-                        [(point.range * np.cos(point.angle + np.pi/2), \
-                          point.range * np.sin(point.angle + np.pi/2)) \
-                         for point in scan.points \
-                         if point.range >= self.minRange], \
+                        [(point.range * np.cos(point.angle + np.pi / 2),
+                          point.range * np.sin(point.angle + np.pi / 2))
+                         for point in scan.points
+                         if point.range >= self.minRange],
                         dtype=[('x', float), ('y', float)])
                     # Find sample with the highest range, to adjust autoscaling accordingly
                     maxRange = max([point.range for point in scan.points])
@@ -59,11 +57,10 @@ class Worker(QObject):
                     # Convert all samples to cartesian coordinate system
                     # that are under the configured maximum range and above 0.1 meters.
                     data = np.array(
-                        [(point.range * np.cos(point.angle + np.pi/2),
-                          point.range * np.sin(point.angle + np.pi/2)) \
-                         for point in scan.points \
-                         if point.range <= self.maxRange
-                         and point.range >= self.minRange], \
+                        [(point.range * np.cos(point.angle + np.pi / 2),
+                          point.range * np.sin(point.angle + np.pi / 2))
+                         for point in scan.points
+                         if self.maxRange >= point.range >= self.minRange],
                         dtype=[('x', float), ('y', float)])
                     # The configured max range
                     maxRange = self.maxRange
@@ -74,11 +71,11 @@ class Worker(QObject):
                 # Notify GUI process to plot the sampled data
                 # and update the scaling of the plot if necessary
                 self.dataSignal.emit({
-                    'points' : data,
-                    'maxRange' : maxRange,
-                    'collisionPoint' : {
-                        'forward' : forwardCollisionPoint,
-                        'backward' : backwardCollisionPoint
+                    'points': data,
+                    'maxRange': maxRange,
+                    'collisionPoint': {
+                        'forward': forwardCollisionPoint,
+                        'backward': backwardCollisionPoint
                     }
                 })
                 fetchAndSignalTime = time.time() - fetchAndSignalTime
@@ -92,47 +89,59 @@ class Worker(QObject):
             else:
                 print('Skipped a rotation')
 
-
     def __findCollisionPoint(self, points):
+        """ Finds nearest points that are in the path of the car (defined by halfCarWidth and turnRadius)
+            in forward and backward direction. """
         if self.turnRadius == 0:
             # No normal vector is needed. Just check x values of the samples.
             collisionPoints = np.array(
-                [(point['x'], point['y']) \
-                 for point in points \
-                 if point['x'] <= self.halfCarWidth \
-                 and point['x'] >= -self.halfCarWidth \
-                 and abs(point['y']) >= self.minRange], \
+                [(point['x'], point['y'])
+                 for point in points
+                 if abs(point['x']) <= self.halfCarWidth
+                 and abs(point['y']) >= self.minRange],
                 dtype=[('pathDistance', float), ('carDistance', float)])
 
         else:
-            # Translate all samples so that the middle of the circle is
-            # the new coordinate origin and convert to polar coordinates.
-            translatedPoints = np.array(
-                [(np.sqrt((point['x'] - self.turnRadius)**2 + point['y']**2), \
-                  np.arctan(point['y']/(point['x'] - self.turnRadius))) \
-                 for point in points], \
-                dtype=[('radius', float), ('angle', float)])
+            # 1.) translate all samples so that the middle of the circle is
+            #     the new coordinate origin (shift them to the left).
+            # 2.) Only for a right turn:
+            #     Mirror them over the x axis so that the 0 degree angle
+            #     is in the original coordinate systems origin.
+            # 3.) Convert to polar coordinates.
 
-            # Select all points that are in the car path and store their
-            # path distance to the car (circular segment) and to the path
+            # Create factor to mirror only for a right turn
+            if self.turnRadius > 0:
+                mirror = -1
+            else:
+                mirror = 1
+            # Translate and convert
+            translatedPoints = np.array(
+                [(np.abs(mirror * (point['x'] - self.turnRadius) + 1j * point['y']),
+                  np.angle(mirror * (point['x'] - self.turnRadius) + 1j * point['y']))
+                 for point in points],
+                dtype=[('radius', float), ('angle', float)]
+            )
+
+            # 4.) Select all points that are in the car path and store their
+            #     path distance to the car (circular segment) and to the path center.
             collisionPoints = np.array(
-                [(abs(self.turnRadius) - point['radius'], \
+                [(abs(self.turnRadius) - point['radius'],
                   point['angle'] * abs(self.turnRadius))
-                 for point in translatedPoints \
-                 if point['radius'] <= abs(self.turnRadius) + self.halfCarWidth \
-                 and point['radius'] >= abs(self.turnRadius) - self.halfCarWidth], \
+                 for point in translatedPoints
+                 if abs(self.turnRadius) + self.halfCarWidth >= point['radius']
+                 >= abs(self.turnRadius) - self.halfCarWidth],
                 dtype=[('pathDistance', float), ('carDistance', float)])
 
+        # 5.) Find the path distance to the first forward and backwards collision points.
         firstForwardCollisionPoint, firstBackwardCollisionPoint \
             = self.__getMinCarDistance(collisionPoints)
 
         return firstForwardCollisionPoint, firstBackwardCollisionPoint
 
-
     def __getMinCarDistance(self, collisionPoints):
         """ Finds the points with the minimum positive carDistance
             and the maximum negative carDistance. """
-        minForwardPoint  =  np.Inf
+        minForwardPoint = np.Inf
         minBackwardPoint = -np.Inf
 
         for point in collisionPoints:
@@ -151,10 +160,21 @@ class Worker(QObject):
             if minBackwardPoint == -np.Inf:
                 minBackwardPoint = -self.maxRange
         else:
-            if minForwardPoint == np.Inf:
-                minForwardPoint = abs(self.turnRadius) * np.pi
-            if minBackwardPoint == -np.Inf:
-                minBackwardPoint = -abs(self.turnRadius) * np.pi
+            if (self.turnRadius + self.halfCarWidth) * 2 <= self.maxRange:
+                # Full 180 degree turn is possible
+                if minForwardPoint == np.Inf:
+                    minForwardPoint = self.turnRadius * np.pi
+                if minBackwardPoint == -np.Inf:
+                    minBackwardPoint = -self.turnRadius * np.pi
+            else:
+                # Find intersections of the turn circle and the vision range circle
+                temp = self.maxRange / self.turnRadius
+                alpha = np.cos(1 - 0.5 * temp * temp)
+                if minForwardPoint == np.Inf:
+                    #minForwardPoint = abs(self.turnRadius) * np.pi
+                    minForwardPoint = alpha * abs(self.turnRadius)
+                if minBackwardPoint == -np.Inf:
+                    #minBackwardPoint = -abs(self.turnRadius) * np.pi
+                    minBackwardPoint = -alpha * abs(self.turnRadius)
 
         return minForwardPoint, minBackwardPoint
-
