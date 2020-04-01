@@ -128,8 +128,7 @@ class Worker(QObject):
                 [(abs(self.turnRadius) - point['radius'],
                   point['angle'] * abs(self.turnRadius))
                  for point in translatedPoints
-                 if abs(self.turnRadius) + self.halfCarWidth >= point['radius']
-                 >= abs(self.turnRadius) - self.halfCarWidth],
+                 if self.halfCarWidth >= abs(self.turnRadius) - point['radius'] >= -self.halfCarWidth],
                 dtype=[('pathDistance', float), ('carDistance', float)])
 
         # 5.) Find the path distance to the first forward and backwards collision points.
@@ -160,21 +159,26 @@ class Worker(QObject):
             if minBackwardPoint == -np.Inf:
                 minBackwardPoint = -self.maxRange
         else:
-            if (self.turnRadius + self.halfCarWidth) * 2 <= self.maxRange:
+            if (abs(self.turnRadius) + self.halfCarWidth) * 2 <= self.maxRange:
                 # Full 180 degree turn is possible
                 if minForwardPoint == np.Inf:
                     minForwardPoint = self.turnRadius * np.pi
                 if minBackwardPoint == -np.Inf:
                     minBackwardPoint = -self.turnRadius * np.pi
             else:
-                # Find intersections of the turn circle and the vision range circle
-                temp = self.maxRange / self.turnRadius
-                alpha = np.cos(1 - 0.5 * temp * temp)
-                if minForwardPoint == np.Inf:
-                    #minForwardPoint = abs(self.turnRadius) * np.pi
-                    minForwardPoint = alpha * abs(self.turnRadius)
-                if minBackwardPoint == -np.Inf:
-                    #minBackwardPoint = -abs(self.turnRadius) * np.pi
-                    minBackwardPoint = -alpha * abs(self.turnRadius)
+                # Find the path distance until the outer edge of the car would touch the vision range circle
+                # by intersections of the two circles
+                if minForwardPoint == np.Inf or minBackwardPoint == -np.Inf:
+                    outerTurnRadius = abs(self.turnRadius) + self.halfCarWidth
+                    outerTurnRadiusSqu = outerTurnRadius * outerTurnRadius
+                    turnRadiusSqu = self.turnRadius * self.turnRadius
+                    maxRangeSqu = self.maxRange * self.maxRange
+                    alpha = np.arccos((turnRadiusSqu + outerTurnRadiusSqu - maxRangeSqu)
+                                      / (2*outerTurnRadius*abs(self.turnRadius)))
+
+                    if minForwardPoint == np.Inf:
+                        minForwardPoint = alpha * abs(self.turnRadius)
+                    if minBackwardPoint == -np.Inf:
+                        minBackwardPoint = -alpha * abs(self.turnRadius)
 
         return minForwardPoint, minBackwardPoint

@@ -264,8 +264,8 @@ class LidarGUI(QWidget):
                 self.rightPathCurveGreen.setStartAngle(newStartAngle)
                 self.leftPathCurveGreen.setStartAngle(newStartAngle)
 
-                self.plotWidget.addItem(self.rightPathCurveGreen)
-                self.plotWidget.addItem(self.leftPathCurveGreen)
+            self.plotWidget.addItem(self.rightPathCurveGreen)
+            self.plotWidget.addItem(self.leftPathCurveGreen)
 
     def drawCarPath(self):
         """ Draws the current path of the car in red dashed lines. """
