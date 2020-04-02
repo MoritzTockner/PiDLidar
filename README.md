@@ -165,6 +165,58 @@ After some status messages, the GUI will appear with the following control eleme
 
 ![GUI](image/gui.png  "GUI")
 
+# Algorithms used in the Example
+## Linear Path Collision Range
+![LinearPath](image/LinearPath.png  "LinearPath")
+
+The easiest case for collision range finding is a linear car driving path.
+Here the x coordinates `x1, x2, ..., xi` of all samples are compared with the `halfCarWidth h`. All samples where
+```
+h <= abs(xi)
+``` 
+are selected and the one with absolute minimum value determines the range until the car would collide with an obstacle. When no samples are found in the path, the range is set to the currently configurated maximum vision range.
+This procedure is performed for samples in front of the car for the forward driving range and samples behind the car for the backward driving range.
+
+## Curved Path Collision Range
+![CurvedPath](image/CurvedPath.png  "CurvedPath")
+
+The driving range for a curved path with `turnRadius r1`, until a collision with an obstacle would occur, is calculated as follows:
+
+1. All samples `(x1, y1), (x2, y2), ..., (xi, yi)` are translated so that the middle of the circle is the new coordinate origin (shift them to the left).
+```
+   xi = xi - r1
+```
+2. Convert to polar coordinates.
+3. Select all points where the radius `r` is `r1 - h <= r <= r1 + h`, where `h` is the `halfCarWidth`.
+4. For these selected points, the curve distance to the car is calculated via `distance = phi * r1`, where `phi` is the polar angle of a selected sample.
+5. The points with the shortest positive and negative `distance` determine the forward and backward collision range.
+
+### No Obstacles in Path
+![CircleIntersection](image/CircleIntersection.png  "CircleIntersection")
+
+When the free range to drive for the car is not limited by an obstacle, but only by the current vision range, the range can be calculated by first finding the point of intersection of the turn circle with `outerTurnRadius r1` and the vision circle with `maxRange r2`. Actually only `a` is needed for further calculations, which can be easily obtained from the x coordinate of the point of intersection. With the pythagorean theorem of two right angled triangles
+```
+r1*r1 = a*a + c*c
+r2*r2 = b*b + c*c
+```
+, and using
+```
+d = a + b
+```
+where `d` is the `turnRadius`, `a` can be calculated with
+```
+a = (d*d + r1*r1 - r2*r2)/(2*d)
+```
+With `a` and `r1`, the angle `alpha` can be obtained via
+```
+alpha = arccos(a/r1)
+```
+This yields the arc length of the turn circle
+```
+range = alpha * r1
+```
+The same can be done for the lower half of the vision circle (i.e. the backward driving range).
+
 ## The API
 See the C++ SDK API.
 
@@ -176,8 +228,8 @@ The following specifications are gathered from the [Datasheet](1).
 | :---- | :---: | :------: | :--------------: | :-------: | :----------------: | :--------------: | :-----------: | :---------: |
 | X4    |   6   |  128000  |        5         | 0.12 - 10 |       5 - 12       |      false       |     false     |  4.8 - 5.2  |
 
-   Note: ScanFrequency (the rotational frequency of the Sensor) can only be changed via an external PWM signal (see [Datasheet](1) - page 5, 6).
-   
+   Note: ScanFrequency (the rotational frequency of the Sensor) can only be changed via an external PWM signal (see [Datasheet](1) - page 5, 6).   
+
 # Useful Links
 
 * [Pybind11 Documentation](https://pybind11.readthedocs.io/en/stable/)
