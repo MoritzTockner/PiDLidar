@@ -50,7 +50,8 @@ class Worker(QObject):
                           point.range * np.sin(point.angle + np.pi / 2))
                          for point in scan.points
                          if point.range >= self.minRange],
-                        dtype=[('x', float), ('y', float)])
+                        dtype=[('x', float), ('y', float)]
+                    )
                     # Find sample with the highest range, to adjust autoscaling accordingly
                     maxRange = max([point.range for point in scan.points])
                 else:
@@ -61,12 +62,13 @@ class Worker(QObject):
                           point.range * np.sin(point.angle + np.pi / 2))
                          for point in scan.points
                          if self.maxRange >= point.range >= self.minRange],
-                        dtype=[('x', float), ('y', float)])
+                        dtype=[('x', float), ('y', float)]
+                    )
                     # The configured max range
                     maxRange = self.maxRange
 
                 # Find the collision range
-                forwardCollisionPoint, backwardCollisionPoint = self.__findCollisionPoint(data)
+                forwardCollisionPoint, backwardCollisionPoint = self.__findCollisionPoint(data, maxRange)
 
                 # Notify GUI process to plot the sampled data
                 # and update the scaling of the plot if necessary
@@ -89,10 +91,11 @@ class Worker(QObject):
             else:
                 print('Skipped a rotation')
 
-    def __findCollisionPoint(self, points):
+    def __findCollisionPoint(self, points, maxRange):
         """ Finds nearest points that are in the path of the car (defined by halfCarWidth and turnRadius)
             in forward and backward direction. """
-        if self.turnRadius == 0:
+        turnRadius = self.turnRadius
+        if turnRadius == 0:
             # No normal vector is needed. Just check x values of the samples.
             collisionPoints = np.array(
                 [(point['x'], point['y'])
@@ -110,14 +113,14 @@ class Worker(QObject):
             # 3.) Convert to polar coordinates.
 
             # Create factor to mirror only for a right turn
-            if self.turnRadius > 0:
+            if turnRadius > 0:
                 mirror = -1
             else:
                 mirror = 1
             # Translate and convert
             translatedPoints = np.array(
-                [(np.abs(mirror * (point['x'] - self.turnRadius) + 1j * point['y']),
-                  np.angle(mirror * (point['x'] - self.turnRadius) + 1j * point['y']))
+                [(np.abs(mirror * (point['x'] - turnRadius) + 1j * point['y']),
+                  np.angle(mirror * (point['x'] - turnRadius) + 1j * point['y']))
                  for point in points],
                 dtype=[('radius', float), ('angle', float)]
             )
@@ -125,19 +128,81 @@ class Worker(QObject):
             # 4.) Select all points that are in the car path and store their
             #     path distance to the car (circular segment) and to the path center.
             collisionPoints = np.array(
-                [(abs(self.turnRadius) - point['radius'],
-                  point['angle'] * abs(self.turnRadius))
+                [(abs(turnRadius) - point['radius'],
+                  point['angle'] * abs(turnRadius))
                  for point in translatedPoints
-                 if self.halfCarWidth >= abs(self.turnRadius) - point['radius'] >= -self.halfCarWidth],
+                 if self.halfCarWidth >= abs(turnRadius) - point['radius'] >= -self.halfCarWidth],
                 dtype=[('pathDistance', float), ('carDistance', float)])
 
-        # 5.) Find the path distance to the first forward and backwards collision points.
+            # 5.) Find points that limit the free path by blocking vision behind them
+            intersectionPoints = self.__intersect(translatedPoints, turnRadius)
+
+            # 6.) Add them to the collision points.
+            collisionPoints = np.append(collisionPoints, intersectionPoints)
+
+        # 7.) Find the path distance to the first forward and backwards collision points.
         firstForwardCollisionPoint, firstBackwardCollisionPoint \
-            = self.__getMinCarDistance(collisionPoints)
+            = self.__getMinCarDistance(collisionPoints, turnRadius, maxRange)
 
         return firstForwardCollisionPoint, firstBackwardCollisionPoint
 
-    def __getMinCarDistance(self, collisionPoints):
+    def __intersect(self, points, turnRadius):
+        """
+
+        :param points: two-dimensional numpy array with 'radius' and 'angle' dimension, which are the polar coordinates
+                       of the individual points. Their coordinate origin is in the middle of the turn circle.
+        :param turnRadius: Radius of the turn circle. Negative means left circle, positive means right circle.
+        :return:
+        """
+        # 1.) Select all points (in polar coordinates with the middle of the circle as coordinate origin)
+        #     that are in the turn path circle and convert them back to cartesian coordinates.
+        visionBlockingPoints = np.array(
+            [(-np.real(point['radius'] * np.exp(1j * point['angle'])),
+              np.imag(point['radius'] * np.exp(1j * point['angle'])))
+             for point in points
+             if point['radius'] < abs(turnRadius) - self.halfCarWidth],
+            dtype=[('x', float), ('y', float)]
+        )
+
+        # 2.) Calculate the slope k for a line through the sample and the original
+        #     coordinate origin (in current coordinate system (-turnRadius, 0)).
+        kArr = np.array(
+            [point['y'] / (point['x'] + turnRadius)
+             for point in visionBlockingPoints]
+        )
+
+        # 3.) Take the lines with the steepest positive and negative slope.
+        k = [kArr.argmin(), kArr.argmax()]
+
+        # 4.) Calculate the second parameter d for the lines with the minimum and maximum slope.
+        d = visionBlockingPoints['y'][k] - kArr[k]*visionBlockingPoints['x'][k]
+
+        # 5.) Find the intersections of these lines with the turn circle.
+        a = 1 + kArr[k] * kArr[k]
+        b = 2 * kArr[k] * d
+        c = d * d - turnRadius * turnRadius
+
+        if turnRadius > 0:
+            # Right turn --> take intersection with greater x value
+            x = (-b + np.sqrt(b * b - 4 * a * c)) / (2 * a)
+        else:
+            # Left turn --> take intersection with smaller x value
+            x = (-b - np.sqrt(b * b - 4 * a * c)) / (2 * a)
+
+        y = kArr[k] * x + d
+
+        # 6.) Convert the intersection points to polar coordinates
+        z = -x + 1j * y
+        intersectionPoints = np.array(
+            [(abs(turnRadius) - np.abs(z),
+              np.angle(z) * abs(turnRadius))
+             for z in z],
+            dtype=[('pathDistance', float), ('carDistance', float)]
+        )
+
+        return intersectionPoints
+
+    def __getMinCarDistance(self, collisionPoints, turnRadius, maxRange):
         """ Finds the points with the minimum positive carDistance
             and the maximum negative carDistance. """
         minForwardPoint = np.Inf
@@ -153,32 +218,33 @@ class Worker(QObject):
                     minBackwardPoint = distance
 
         # If no point was found set to max range
-        if self.turnRadius == 0:
+        if turnRadius == 0:
             if minForwardPoint == np.Inf:
-                minForwardPoint = self.maxRange
+                minForwardPoint = maxRange
             if minBackwardPoint == -np.Inf:
-                minBackwardPoint = -self.maxRange
+                minBackwardPoint = -maxRange
         else:
-            if (abs(self.turnRadius) + self.halfCarWidth) * 2 <= self.maxRange:
+            if (abs(turnRadius) + self.halfCarWidth) * 2 <= maxRange:
                 # Full 180 degree turn is possible
                 if minForwardPoint == np.Inf:
-                    minForwardPoint = self.turnRadius * np.pi
+                    minForwardPoint = turnRadius * np.pi
                 if minBackwardPoint == -np.Inf:
-                    minBackwardPoint = -self.turnRadius * np.pi
+                    minBackwardPoint = -turnRadius * np.pi
             else:
                 # Find the path distance until the outer edge of the car would touch the vision range circle
                 # by intersections of the two circles
-                if minForwardPoint == np.Inf or minBackwardPoint == -np.Inf:
-                    outerTurnRadius = abs(self.turnRadius) + self.halfCarWidth
-                    outerTurnRadiusSqu = outerTurnRadius * outerTurnRadius
-                    turnRadiusSqu = self.turnRadius * self.turnRadius
-                    maxRangeSqu = self.maxRange * self.maxRange
-                    alpha = np.arccos((turnRadiusSqu + outerTurnRadiusSqu - maxRangeSqu)
-                                      / (2*outerTurnRadius*abs(self.turnRadius)))
+                outerTurnRadius = abs(turnRadius) + self.halfCarWidth
+                outerTurnRadiusSqu = outerTurnRadius * outerTurnRadius
+                turnRadiusSqu = turnRadius * turnRadius
+                maxRangeSqu = maxRange * maxRange
+                alpha = np.arccos((turnRadiusSqu + outerTurnRadiusSqu - maxRangeSqu)
+                                  / (2*outerTurnRadius*abs(turnRadius)))
+                turnArc = alpha * abs(turnRadius)
 
-                    if minForwardPoint == np.Inf:
-                        minForwardPoint = alpha * abs(self.turnRadius)
-                    if minBackwardPoint == -np.Inf:
-                        minBackwardPoint = -alpha * abs(self.turnRadius)
+                # Use that path distance if no nearer collision point was found
+                if turnArc < minForwardPoint:
+                    minForwardPoint = turnArc
+                if -turnArc > minBackwardPoint:
+                    minBackwardPoint = -turnArc
 
         return minForwardPoint, minBackwardPoint
