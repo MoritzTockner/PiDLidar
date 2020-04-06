@@ -156,8 +156,15 @@ class Worker(QObject):
         """
         # 1.) Select all points (in polar coordinates with the middle of the circle as coordinate origin)
         #     that are in the turn path circle and convert them back to cartesian coordinates.
+        #     Invert the samples on the x-axis so that the
+        
+        # Create factor to mirror only for a right turn
+        if turnRadius > 0:
+            mirror = -1
+        else:
+            mirror = 1
         visionBlockingPoints = np.array(
-            [(-np.real(point['radius'] * np.exp(1j * point['angle'])),
+            [(mirror * np.real(point['radius'] * np.exp(1j * point['angle'])),
               np.imag(point['radius'] * np.exp(1j * point['angle'])))
              for point in points
              if point['radius'] < abs(turnRadius) - self.halfCarWidth],
@@ -192,7 +199,7 @@ class Worker(QObject):
         y = kArr[k] * x + d
 
         # 6.) Convert the intersection points to polar coordinates
-        z = -x + 1j * y
+        z = mirror * x + 1j * y
         intersectionPoints = np.array(
             [(abs(turnRadius) - np.abs(z),
               np.angle(z) * abs(turnRadius))
