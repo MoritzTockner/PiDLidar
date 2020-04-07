@@ -2,14 +2,31 @@ import time
 
 import PiDLidar
 import numpy as np
-from PyQt5.QtCore import (QThread, QObject, pyqtSlot, pyqtSignal)
+from PyQt5.QtCore import (QObject, pyqtSlot, pyqtSignal)
 
 
 class Worker(QObject):
+    """
+    LiDAR GUI worker class which fetches the samples from the LiDAR sensor (defined by the 'laser' object) and sends
+    the GUI object with 'dataSignal' the fetched points in cartesian coordinates, the current 'maxRange'
+    and the distance that the car can drive until it could collide with an obstacle.
+    """
     start = pyqtSignal()  # Starts the run method
     dataSignal = pyqtSignal(object)  # Notifies GUI thread to update plot with object as data
 
     def __init__(self, laser, minRange, maxRange, halfCarWidth, turnRadius, autoScale):
+        """
+        Constructor of the LiDAR gui worker class.
+        :param laser: laser object of the LiDAR sensor.
+        :param minRange: Minimum recognizable distance from the sensor to the scanned object.
+        :param maxRange: Initial maximum recognizable distance from the sensor to the scanned object.
+        :param halfCarWidth: Half of the cars width in meters.
+        :param turnRadius: Initial curve radius of the path for which the collision range will be calculated in meters.
+                           Zero means driving in a straight line.
+        :param autoScale: If True --> maxRange is changed every scan depending on the furthest distance of the scanned
+                          samples.
+                          If False --> maxRange won't be changed from inside this class.
+        """
         QObject.__init__(self)
         self.laser = laser  # CYdLidar class object
         self.finish = False  # Is set to true when stop button is pressed to close worker thread
@@ -27,8 +44,10 @@ class Worker(QObject):
 
     @pyqtSlot()
     def run(self):
-        """ Gets lidar data from sensor in a loop and emits a signal when new data arrived.
-            Sleeps for a constant time before fetching new data from the sensor. """
+        """
+        Gets LiDAR data from sensor in a loop and emits the 'dataSignal' signal when new data arrived necessary
+        all information about the new data. Sleeps until the sensor completes the current rotation.
+        """
         scan = PiDLidar.LaserScan()
         hardError = False
         fetchAndSignalTime = 0
@@ -68,7 +87,8 @@ class Worker(QObject):
                     maxRange = self.maxRange
 
                 # Find the collision range
-                forwardCollisionPoint, backwardCollisionPoint = self.__findCollisionPoint(data, maxRange)
+                forwardCollisionPoint, backwardCollisionPoint = self.__findCollisionPoint(
+                    data, maxRange, self.turnRadius)
 
                 # Notify GUI process to plot the sampled data
                 # and update the scaling of the plot if necessary
@@ -91,10 +111,16 @@ class Worker(QObject):
             else:
                 print('Skipped a rotation')
 
-    def __findCollisionPoint(self, points, maxRange):
-        """ Finds nearest points that are in the path of the car (defined by halfCarWidth and turnRadius)
-            in forward and backward direction. """
-        turnRadius = self.turnRadius
+    def __findCollisionPoint(self, points, maxRange, turnRadius):
+        """
+        Finds nearest points that are in the path of the car (defined by 'halfCarWidth' and 'turnRadius') in forward
+        and backward direction.
+        :param points: numpy array with 'x' and 'y' dimension containing the coordinates of the points.
+        :param maxRange: configured maximum vision range of the sensor.
+        :param turnRadius: The radius of the circle formed by the cars driving path.
+        :return A 2-tuple containing the range the car can drive with the given 'turnRadius' until it could collide with
+        and obstacle in forward and backward driving direction.
+        """
         if turnRadius == 0:
             # No normal vector is needed. Just check x values of the samples.
             collisionPoints = np.array(
@@ -103,7 +129,6 @@ class Worker(QObject):
                  if abs(point['x']) <= self.halfCarWidth
                  and abs(point['y']) >= self.minRange],
                 dtype=[('pathDistance', float), ('carDistance', float)])
-
         else:
             # 1.) translate all samples so that the middle of the circle is
             #     the new coordinate origin (shift them to the left).
@@ -140,29 +165,37 @@ class Worker(QObject):
             # 6.) Add them to the collision points.
             collisionPoints = np.append(collisionPoints, intersectionPoints)
 
-        # 7.) Find the path distance to the first forward and backwards collision points.
-        firstForwardCollisionPoint, firstBackwardCollisionPoint \
-            = self.__getMinCarDistance(collisionPoints, turnRadius, maxRange)
+        # 7.) Return the path distance to the first forward and backwards collision points.
+        #firstForwardCollisionPoint, firstBackwardCollisionPoint \
+        #    = self.__getMinCarDistance(collisionPoints, turnRadius, maxRange)
 
-        return firstForwardCollisionPoint, firstBackwardCollisionPoint
+        return self.__getMinCarDistance(collisionPoints, turnRadius, maxRange)
 
     def __intersect(self, points, turnRadius):
         """
-
+        Calculates guaranteed free driving distance possible considering the points that are in the turn circle
+        and block the vision of the driving path behind them.
+        The calculation is done via intersection of the turn circle (defined by 'turnRadius') with a line from the
+        original coordinate origin (the location of the sensor) through the given points.
         :param points: two-dimensional numpy array with 'radius' and 'angle' dimension, which are the polar coordinates
                        of the individual points. Their coordinate origin is in the middle of the turn circle.
-        :param turnRadius: Radius of the turn circle. Negative means left circle, positive means right circle.
-        :return:
+        :param turnRadius: Radius of the turn circle. Negative means left turn, positive means right turn.
+        :return: Numpy array with 'pathDistance' and 'carDistance' information about the free driving range
+                 that is possible due to obstacles inside the turn circle blocking the vision behind them.
         """
+        # Return array types
+        ret_dt = np.dtype([('pathDistance', float), ('carDistance', float)])
+
         # 1.) Select all points (in polar coordinates with the middle of the circle as coordinate origin)
         #     that are in the turn path circle and convert them back to cartesian coordinates.
-        #     Invert the samples on the x-axis so that the
-        
-        # Create factor to mirror only for a right turn
+
+        # Factor to undo the previous x-axis mirroring.
         if turnRadius > 0:
             mirror = -1
         else:
             mirror = 1
+
+        # Select and convert the points
         visionBlockingPoints = np.array(
             [(mirror * np.real(point['radius'] * np.exp(1j * point['angle'])),
               np.imag(point['radius'] * np.exp(1j * point['angle'])))
@@ -170,6 +203,10 @@ class Worker(QObject):
              if point['radius'] < abs(turnRadius) - self.halfCarWidth],
             dtype=[('x', float), ('y', float)]
         )
+
+        # Return empty array if no points are in the turn path circle
+        if visionBlockingPoints.size == 0:
+            return np.array([], dtype=ret_dt)
 
         # 2.) Calculate the slope k for a line through the sample and the original
         #     coordinate origin (in current coordinate system (-turnRadius, 0)).
@@ -204,40 +241,48 @@ class Worker(QObject):
             [(abs(turnRadius) - np.abs(z),
               np.angle(z) * abs(turnRadius))
              for z in z],
-            dtype=[('pathDistance', float), ('carDistance', float)]
+            dtype=ret_dt
         )
 
         return intersectionPoints
 
     def __getMinCarDistance(self, collisionPoints, turnRadius, maxRange):
-        """ Finds the points with the minimum positive carDistance
-            and the maximum negative carDistance. """
-        minForwardPoint = np.Inf
-        minBackwardPoint = -np.Inf
+        """
+        Finds the guaranteed free driving ranges forwards and backwards and returns them as 2-tuple.
+        They are limited either by points (collisionPoints) that are in the current driving path
+        (described by turnRadius and self.halfCarWidth) or if there are no forward/backward 'collisionPoints',
+        calculates the range from the given 'turnRadius' and 'maxRange'.
+        :param collisionPoints: numpy array of points that would block the driving path. Must contain
+               field 'carDistance' which represents the possible driving distance until the car would collide
+               with the point.
+        :param turnRadius: Radius of the turn circle. Negative means left circle, positive means right circle.
+        :param maxRange: 2-tuple in the form of (guaranteed free driving range forwards, backwards)
+        """
+        minForwardRange = np.Inf
+        minBackwardRange = -np.Inf
 
+        # Find minimum forward and backward distance
         for point in collisionPoints:
             distance = point['carDistance']
             if distance > 0:
-                if distance < minForwardPoint:
-                    minForwardPoint = distance
+                if distance < minForwardRange:
+                    minForwardRange = distance
             else:
-                if distance > minBackwardPoint:
-                    minBackwardPoint = distance
+                if distance > minBackwardRange:
+                    minBackwardRange = distance
 
-        # If no point was found set to max range
         if turnRadius == 0:
-            if minForwardPoint == np.Inf:
-                minForwardPoint = maxRange
-            if minBackwardPoint == -np.Inf:
-                minBackwardPoint = -maxRange
+            # If driving path is a straight line
+            if minForwardRange == np.Inf:
+                # and no point was found in forward direction set to maxRange
+                minForwardRange = maxRange
+            if minBackwardRange == -np.Inf:
+                # and no point was found in backward direction set to -maxRange
+                minBackwardRange = -maxRange
         else:
-            if (abs(turnRadius) + self.halfCarWidth) * 2 <= maxRange:
-                # Full 180 degree turn is possible
-                if minForwardPoint == np.Inf:
-                    minForwardPoint = turnRadius * np.pi
-                if minBackwardPoint == -np.Inf:
-                    minBackwardPoint = -turnRadius * np.pi
-            else:
+            # If driving path is a curve
+            if (abs(turnRadius) + self.halfCarWidth) * 2 > maxRange:
+                # and driving full circle is not possible due to maxRange
                 # Find the path distance until the outer edge of the car would touch the vision range circle
                 # by intersections of the two circles
                 outerTurnRadius = abs(turnRadius) + self.halfCarWidth
@@ -249,9 +294,28 @@ class Worker(QObject):
                 turnArc = alpha * abs(turnRadius)
 
                 # Use that path distance if no nearer collision point was found
-                if turnArc < minForwardPoint:
-                    minForwardPoint = turnArc
-                if -turnArc > minBackwardPoint:
-                    minBackwardPoint = -turnArc
+                if turnArc < minForwardRange:
+                    minForwardRange = turnArc
+                if -turnArc > minBackwardRange:
+                    minBackwardRange = -turnArc
+            else:
+                # and driving full circle could be possible due to maxRange
+                if collisionPoints.size == 0:
+                    # and there are no collision points
+                    # Set the range to full circle
+                    minForwardRange = abs(turnRadius) * 2 * np.pi
+                    minBackwardRange = -abs(turnRadius) * 2 * np.pi
+                else:
+                    # but driving full circle is not possible due to collision points
+                    if minForwardRange == np.Inf and not minBackwardRange == -np.Inf:
+                        # and there is at least one collision point in the lower half of the turn circle
+                        # but not in the upper half. Extend the minForwardRange to more than half the
+                        # turn circle arc length.
+                        minForwardRange = 2*np.pi*abs(turnRadius) + collisionPoints['carDistance'].min()
+                    elif not minForwardRange == np.Inf and minBackwardRange == -np.Inf:
+                        # and there is at least one collision point in the upper half of the turn circle
+                        # but not in the lower half. Extend the minBackwardRange to more than half the
+                        # turn circle arc length.
+                        minBackwardRange = -2*np.pi*abs(turnRadius) + collisionPoints['carDistance'].max()
 
-        return minForwardPoint, minBackwardPoint
+        return minForwardRange, minBackwardRange

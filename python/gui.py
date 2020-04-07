@@ -1,7 +1,7 @@
 import sys
-from PyQt5.QtWidgets import (QTextEdit, QSizePolicy, QSlider, QCheckBox, QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
-                             QApplication)
-from PyQt5.QtCore import (Qt, QThread, QObject, pyqtSlot, pyqtSignal, QPointF)
+from PyQt5.QtWidgets import (QTextEdit, QSlider, QCheckBox, QWidget, QPushButton,
+                             QHBoxLayout, QVBoxLayout, QApplication)
+from PyQt5.QtCore import (Qt, QThread, pyqtSlot, QPointF)
 import pyqtgraph as pg
 
 import numpy as np
@@ -151,14 +151,14 @@ class LidarGUI(QWidget):
             symbolPen='w',
             symbolBrush='w')
 
-        hbox.addWidget(self.plotWidget, 3)
-        hbox.addLayout(vbox, 1)
+        hbox.addWidget(self.plotWidget, 9)
+        hbox.addLayout(vbox, 7)
 
         self.setLayout(hbox)
         self.setWindowTitle('Lidar')
 
         # Show the gui window
-        # self.showFullScreen()
+        #self.showFullScreen()
         self.show()
         print('GUI Initialized')
 
@@ -170,7 +170,7 @@ class LidarGUI(QWidget):
         self.drawCarPath()
 
     def redrawGrid(self):
-        """ Changes the polar grid lines according to the caling value. """
+        """ Changes the polar grid lines according to the scaling value. """
         for i in np.arange(1, self.nrOfGridCircles + 1, 1):
             r = i / 10 * self.scalings[self.scalingSlider.value()]
             self.gridCircles[i - 1].setRect(-r, -r, r * 2, r * 2)
@@ -188,6 +188,7 @@ class LidarGUI(QWidget):
             self.plotWidget.addItem(self.gridCircles[i - 1])
 
     def removeCarPath(self):
+        """ Removes all car path lines from the plot. """
         self.plotWidget.removeItem(self.rightPathCurve)
         self.plotWidget.removeItem(self.leftPathCurve)
         self.plotWidget.removeItem(self.rightPathCurveGreen)
@@ -297,7 +298,6 @@ class LidarGUI(QWidget):
             0, -self.turnRadius / 2,
             self.turnRadius, self.turnRadius)
         self.rightPathCurve.setPen(self.redPen)
-
 
         self.rightPathCurveGreen = pg.QtGui.QGraphicsEllipseItem(
             0, -self.turnRadius / 2,
