@@ -191,7 +191,62 @@ The driving range for a curved path with `turnRadius r1`, until a collision with
 4. For these selected points, the curve distance to the car is calculated via `distance = phi * r1`, where `phi` is the polar angle of a selected sample.
 5. The points with the shortest positive and negative `distance` determine the forward and backward collision range.
 
-### No Obstacles in Path
+### Obstacles Inside the Turn Circle
+![LineIntersection](image/LineIntersection.png  "LineIntersection")
+
+If there are no visible obstacles in the driving path but the sensor vision can be blocked by objects inside the turn circle. Therefore it cannot be guaranteed that the path behind these objects is free of obstacles and the collision range has to be limited by these objects.
+
+In this case the collision range can be calculated placing a line for every sample defined as
+```
+y = k*x + d
+``` 
+through the individual sample `(x1, y1)` and the location of the sensor, which is `(r, 0)` in the case of the image above. The slope of the line `k` has to be calculated for every sample generally via
+```
+k = (y1 - y2) / (x1 - x2)
+```
+or for the depictured example
+```
+k = y1 / (x1 - r)
+```
+which would yield a `k < 0`. The line which limits the driving path the most can be found by selecting the one with the highest or lowest slope, depending on the direction of the turn and forward or backward driving.
+
+Two lines for forward and and backward driving are selected like this and their offset `d` is then calculated via 
+```
+d = y - k*x
+```
+where `x` and `y` are the coordinates of the sample with which that lines slope was calculated.
+
+The intersections of this line with the turn circle can then be calculated by substituting the linear equation 
+```
+y = k*x + d
+```
+into the equation describing the turn circle
+```
+x*x + y*y = r*r
+```
+which leads to
+```
+x*x* + (k*x + d)*(k*x + d) = r*r
+```
+. This can be simplified to a standard quadratic equation of the form
+```
+a*x*x + b*x + c = 0
+```
+where
+```
+a = 1 + k*k
+b = 2*k*d
+c = d*d - r*r
+```
+. The two solutions to this equation are
+```
+x = (-b +- sqrt(b * b - 4 * a * c)) / (2 * a)
+```
+where the solution with a greater x value is the desired solution for a right turn and the smaller x value for a left turn. The y coordinate of the intersection point can then easily calculated by substition into the linear equation. 
+
+Finally the range can be calculated by converting the intersection point to polar coordinates and multiplying the angle (in radiants) with the `innerTurnRadius`.
+
+### No Obstacles
 ![CircleIntersection](image/CircleIntersection.png  "CircleIntersection")
 
 When the free range to drive for the car is not limited by an obstacle, but only by the current vision range, the range can be calculated by first finding the point of intersection of the turn circle with `outerTurnRadius r1` and the vision circle with `maxRange r2`. Actually only `a` is needed for further calculations, which can be easily obtained from the x coordinate of the point of intersection. With the pythagorean theorem of two right angled triangles
