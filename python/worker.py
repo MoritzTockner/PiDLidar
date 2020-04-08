@@ -166,9 +166,6 @@ class Worker(QObject):
             collisionPoints = np.append(collisionPoints, intersectionPoints)
 
         # 7.) Return the path distance to the first forward and backwards collision points.
-        #firstForwardCollisionPoint, firstBackwardCollisionPoint \
-        #    = self.__getMinCarDistance(collisionPoints, turnRadius, maxRange)
-
         return self.__getMinCarDistance(collisionPoints, turnRadius, maxRange)
 
     def __intersect(self, points, turnRadius):
