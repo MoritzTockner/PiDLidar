@@ -172,9 +172,9 @@ After some status messages, the GUI will appear with the following control eleme
 The easiest case for collision range finding is a linear car driving path.
 Here the x coordinates `x1, x2, ..., xi` of all samples are compared with the `halfCarWidth h`. All samples where
 ```
-h <= abs(xi)
+h >= abs(xi)
 ``` 
-are selected and the one with absolute minimum value determines the range until the car would collide with an obstacle. When no samples are found in the path, the range is set to the currently configurated maximum vision range.
+are selected and the one with absolute minimum y value determines the range until the car would collide with an obstacle. When no samples are found in the path, the range is set to the currently configurated maximum vision range.
 This procedure is performed for samples in front of the car for the forward driving range and samples behind the car for the backward driving range.
 
 ## Curved Path Collision Range
@@ -182,10 +182,7 @@ This procedure is performed for samples in front of the car for the forward driv
 
 The driving range for a curved path with `turnRadius r1`, until a collision with an obstacle would occur, is calculated as follows:
 
-1. All samples `(x1, y1), (x2, y2), ..., (xi, yi)` are translated so that the middle of the circle is the new coordinate origin (shift them to the left).
-```
-   xi = xi - r1
-```
+1. The coordinate system is shifted such that the point `(-r1, 0)` is the new coordinate origin
 2. Convert to polar coordinates.
 3. Select all points where the radius `r` is `r1 - h <= r <= r1 + h`, where `h` is the `halfCarWidth`.
 4. For these selected points, the curve distance to the car is calculated via `distance = phi * r1`, where `phi` is the polar angle of a selected sample.
